@@ -70,10 +70,13 @@ const GanttView: React.FC = () => {
 
   const timeRange = useMemo(() => {
     if (jobs.length === 0) return { start: new Date(), end: new Date() };
-    const times = jobs.flatMap((j) => [
-      new Date(j.start_time).getTime(),
-      j.end_time ? new Date(j.end_time).getTime() : Date.now(),
-    ]);
+    const times = jobs
+      .filter((j) => j.start_time)
+      .flatMap((j) => [
+        new Date(j.start_time!).getTime(),
+        j.end_time ? new Date(j.end_time).getTime() : Date.now(),
+      ]);
+    if (times.length === 0) return { start: new Date(), end: new Date() };
     return {
       start: new Date(Math.min(...times)),
       end: new Date(Math.max(...times)),
@@ -184,12 +187,12 @@ const GanttView: React.FC = () => {
 
                 {/* Gantt bars */}
                 <Box sx={{ minWidth: 800 * zoom }}>
-                  {jobs.slice(0, 20).map((job) => {
-                    const pos = getBarPosition(job.start_time, job.end_time);
-                    const isOverlapping = hasOverlap(job.job_id, job.run_id);
+                  {jobs.filter((j) => j.start_time).slice(0, 20).map((job) => {
+                    const pos = getBarPosition(job.start_time!, job.end_time);
+                    const isOverlapping = hasOverlap(job.job_id || '', job.run_id || '');
                     return (
                       <Box
-                        key={`${job.job_id}-${job.run_id}`}
+                        key={`${job.job_id || 'unknown'}-${job.run_id || 'unknown'}`}
                         sx={{
                           display: 'flex',
                           alignItems: 'center',
@@ -198,7 +201,7 @@ const GanttView: React.FC = () => {
                         }}
                       >
                         <Box sx={{ width: 180, flexShrink: 0, pr: 2 }}>
-                          <Tooltip title={`Job: ${job.job_id}, Run: ${job.run_id}`}>
+                          <Tooltip title={`Job: ${job.job_id || '-'}, Run: ${job.run_id || '-'}`}>
                             <Typography
                               variant="body2"
                               noWrap
@@ -207,7 +210,7 @@ const GanttView: React.FC = () => {
                                 color: isOverlapping ? 'warning.main' : 'text.primary',
                               }}
                             >
-                              {job.job_name}
+                              {job.job_name || 'Unknown'}
                             </Typography>
                           </Tooltip>
                         </Box>
@@ -216,7 +219,7 @@ const GanttView: React.FC = () => {
                             title={
                               <Box>
                                 <Typography variant="body2">
-                                  Start: {new Date(job.start_time).toLocaleString()}
+                                  Start: {job.start_time ? new Date(job.start_time).toLocaleString() : 'N/A'}
                                 </Typography>
                                 <Typography variant="body2">
                                   End: {job.end_time ? new Date(job.end_time).toLocaleString() : 'Running'}

@@ -275,7 +275,7 @@ const Health: React.FC = () => {
                             </TableCell>
                             <TableCell>
                               <Typography variant="body2">
-                                {new Date(job.last_run).toLocaleString()}
+                                {job.last_run ? new Date(job.last_run).toLocaleString() : '-'}
                               </Typography>
                             </TableCell>
                           </TableRow>

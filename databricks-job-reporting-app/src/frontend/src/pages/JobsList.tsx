@@ -110,10 +110,11 @@ const JobsList: React.FC = () => {
 
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
+      const searchLower = search.toLowerCase();
       const matchesSearch =
-        job.job_name.toLowerCase().includes(search.toLowerCase()) ||
-        job.job_id.includes(search) ||
-        job.run_id.includes(search);
+        (job.job_name || '').toLowerCase().includes(searchLower) ||
+        (job.job_id || '').includes(search) ||
+        (job.run_id || '').includes(search);
       const matchesStatus =
         statusFilter === 'all' || job.result_state === statusFilter;
       const matchesType = typeFilter === 'all' || job.run_type === typeFilter;
@@ -308,27 +309,27 @@ const JobsList: React.FC = () => {
               ) : (
                 paginatedJobs.map((job) => (
                   <TableRow
-                    key={`${job.job_id}-${job.run_id}`}
+                    key={`${job.job_id || 'unknown'}-${job.run_id || 'unknown'}`}
                     hover
                     sx={{ cursor: 'pointer' }}
                   >
                     <TableCell>
                       <Box>
                         <Typography variant="body2" fontWeight={500}>
-                          {job.job_name}
+                          {job.job_name || 'Unknown Job'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          ID: {job.job_id} | Run: {job.run_id}
+                          ID: {job.job_id || '-'} | Run: {job.run_id || '-'}
                         </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={job.run_type}
+                        label={job.run_type || 'N/A'}
                         size="small"
                         sx={{
-                          bgcolor: `${runTypeColors[job.run_type] || '#666'}20`,
-                          color: runTypeColors[job.run_type] || '#666',
+                          bgcolor: `${runTypeColors[job.run_type || ''] || '#666'}20`,
+                          color: runTypeColors[job.run_type || ''] || '#666',
                           fontWeight: 500,
                         }}
                       />
@@ -345,7 +346,7 @@ const JobsList: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        {formatDateTime(job.start_time)}
+                        {job.start_time ? formatDateTime(job.start_time) : '-'}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -355,14 +356,14 @@ const JobsList: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={job.trigger_type}
+                        label={job.trigger_type || 'N/A'}
                         size="small"
                         variant="outlined"
                       />
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" noWrap sx={{ maxWidth: 150 }}>
-                        {job.run_as}
+                        {job.run_as || '-'}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">

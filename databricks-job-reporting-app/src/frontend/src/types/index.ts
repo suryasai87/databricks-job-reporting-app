@@ -6,20 +6,20 @@ export interface User {
 }
 
 export interface JobRun {
-  workspace_id: string;
-  job_id: string;
-  run_id: string;
-  job_name: string;
-  start_time: string;
+  workspace_id: string | null;
+  job_id: string | null;
+  run_id: string | null;
+  job_name: string | null;
+  start_time: string | null;
   end_time: string | null;
   duration_seconds: number | null;
   result_state: string | null;
   termination_code: string | null;
-  trigger_type: string;
-  run_type: string;
-  run_as: string;
-  creator_id: string;
-  cost_usd?: number;
+  trigger_type: string | null;
+  run_type: string | null;
+  run_as: string | null;
+  creator_id: string | null;
+  cost_usd?: number | null;
 }
 
 export interface Job {
@@ -49,34 +49,37 @@ export interface CostSummary {
 }
 
 export interface FailedJob {
-  job_id: string;
-  job_name: string;
-  total_runs: number;
-  failed_runs: number;
+  job_id: string | null;
+  job_name: string | null;
+  total_runs: number | string;
+  failed_runs: number | string;
   success_rate: number;
-  run_as: string;
-  last_run: string;
+  run_as: string | null;
+  last_run: string | null;
 }
 
 export interface ProlongedJob {
-  job_id: string;
-  job_name: string;
-  run_id: string;
+  job_id: string | null;
+  job_name: string | null;
+  run_id: string | null;
   running_minutes: number;
   avg_duration_minutes: number;
   duration_status: 'NORMAL' | 'WARNING' | 'CRITICAL' | 'ANOMALY';
 }
 
 export interface ClusterConfig {
-  cluster_id: string;
-  cluster_name: string;
-  cluster_type: string;
-  driver_node_type: string;
-  worker_node_type: string;
-  min_workers?: number;
-  max_workers?: number;
-  fixed_workers?: number;
-  dbr_version: string;
+  cluster_id: string | null;
+  cluster_name?: string | null;
+  cluster_type: string | null;
+  warehouse_id?: string | null;
+  run_type?: string | null;
+  job_name?: string | null;
+  driver_node_type?: string | null;
+  worker_node_type?: string | null;
+  min_workers?: number | null;
+  max_workers?: number | null;
+  fixed_workers?: number | null;
+  dbr_version?: string | null;
 }
 
 export interface Overlap {

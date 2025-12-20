@@ -72,15 +72,19 @@ const ClusterAnalysis: React.FC = () => {
     fetchData();
   }, []);
 
-  const filteredClusters = clusters.filter(
-    (c) =>
-      c.cluster_name.toLowerCase().includes(search.toLowerCase()) ||
-      c.cluster_id.includes(search) ||
-      c.cluster_type.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredClusters = clusters.filter((c) => {
+    const searchLower = search.toLowerCase();
+    return (
+      (c.cluster_name || '').toLowerCase().includes(searchLower) ||
+      (c.cluster_id || '').includes(search) ||
+      (c.cluster_type || '').toLowerCase().includes(searchLower) ||
+      (c.job_name || '').toLowerCase().includes(searchLower)
+    );
+  });
 
   const clustersByType = clusters.reduce((acc, c) => {
-    acc[c.cluster_type] = (acc[c.cluster_type] || 0) + 1;
+    const type = c.cluster_type || 'unknown';
+    acc[type] = (acc[type] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
@@ -90,7 +94,8 @@ const ClusterAnalysis: React.FC = () => {
   }));
 
   const dbrVersions = clusters.reduce((acc, c) => {
-    acc[c.dbr_version] = (acc[c.dbr_version] || 0) + 1;
+    const version = c.dbr_version || 'N/A';
+    acc[version] = (acc[version] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
@@ -99,8 +104,8 @@ const ClusterAnalysis: React.FC = () => {
     .sort((a, b) => b.value - a.value)
     .slice(0, 6);
 
-  const uniqueDriverTypes = [...new Set(clusters.map((c) => c.driver_node_type))].length;
-  const uniqueWorkerTypes = [...new Set(clusters.map((c) => c.worker_node_type))].length;
+  const uniqueDriverTypes = [...new Set(clusters.map((c) => c.driver_node_type).filter(Boolean))].length;
+  const uniqueWorkerTypes = [...new Set(clusters.map((c) => c.worker_node_type).filter(Boolean))].length;
 
   return (
     <Box>
@@ -299,41 +304,43 @@ const ClusterAnalysis: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredClusters.map((cluster) => (
-                  <TableRow key={cluster.cluster_id} hover>
+                {filteredClusters.map((cluster, index) => (
+                  <TableRow key={cluster.cluster_id || `cluster-${index}`} hover>
                     <TableCell>
                       <Box>
                         <Typography variant="body2" fontWeight={500}>
-                          {cluster.cluster_name}
+                          {cluster.cluster_name || cluster.job_name || 'Unknown'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {cluster.cluster_id}
+                          {cluster.cluster_id || cluster.warehouse_id || '-'}
                         </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={cluster.cluster_type}
+                        label={cluster.cluster_type || 'N/A'}
                         size="small"
                         sx={{
-                          bgcolor: `${clusterTypeColors[cluster.cluster_type] || '#666'}20`,
-                          color: clusterTypeColors[cluster.cluster_type] || '#666',
+                          bgcolor: `${clusterTypeColors[cluster.cluster_type || ''] || '#666'}20`,
+                          color: clusterTypeColors[cluster.cluster_type || ''] || '#666',
                         }}
                       />
                     </TableCell>
                     <TableCell>
                       <Tooltip title="Driver Node Type">
-                        <Typography variant="body2">{cluster.driver_node_type}</Typography>
+                        <Typography variant="body2">{cluster.driver_node_type || '-'}</Typography>
                       </Tooltip>
                     </TableCell>
                     <TableCell>
                       <Tooltip title="Worker Node Type">
-                        <Typography variant="body2">{cluster.worker_node_type}</Typography>
+                        <Typography variant="body2">{cluster.worker_node_type || '-'}</Typography>
                       </Tooltip>
                     </TableCell>
                     <TableCell>
-                      {cluster.fixed_workers !== undefined ? (
+                      {cluster.fixed_workers != null ? (
                         <Chip label={`Fixed: ${cluster.fixed_workers}`} size="small" />
+                      ) : cluster.run_type ? (
+                        <Chip label={cluster.run_type} size="small" color="info" variant="outlined" />
                       ) : (
                         <Chip
                           label={`${cluster.min_workers || 0}-${cluster.max_workers || 'N/A'}`}
@@ -344,7 +351,7 @@ const ClusterAnalysis: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Chip label={cluster.dbr_version} size="small" variant="outlined" />
+                      <Chip label={cluster.dbr_version || 'N/A'} size="small" variant="outlined" />
                     </TableCell>
                   </TableRow>
                 ))}
