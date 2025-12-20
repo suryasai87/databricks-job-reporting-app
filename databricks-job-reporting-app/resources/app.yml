@@ -1,0 +1,6 @@
+resources:
+  apps:
+    databricks-jobs-monitor:
+      name: databricks-jobs-monitor
+      description: "Comprehensive Databricks Jobs Monitoring App with AI Assistant"
+      source_code_path: ${workspace.file_path}/app

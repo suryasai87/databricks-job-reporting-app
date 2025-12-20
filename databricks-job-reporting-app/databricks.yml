@@ -1,0 +1,41 @@
+bundle:
+  name: databricks-jobs-monitor
+
+workspace:
+  host: https://fe-vm-hls-amer.cloud.databricks.com
+
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: main
+
+  schema:
+    description: Schema name
+    default: default
+
+  warehouse_id:
+    description: SQL Warehouse ID for system table queries
+    default: ""
+
+  genie_space_id:
+    description: Genie Space ID for AI Assistant
+    default: ""
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
+
+  staging:
+    mode: development
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/staging
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Applications/${bundle.name}
