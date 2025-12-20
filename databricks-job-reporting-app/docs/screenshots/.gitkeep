@@ -1,0 +1,19 @@
+# Screenshots Directory
+
+Add screenshots of each tab here with the following naming convention:
+
+- dashboard.png
+- jobs-list.png
+- gantt-view.png
+- cost-analytics.png
+- health.png
+- cluster-analysis.png
+- ai-assistant.png
+- reports.png
+- settings.png
+
+To take screenshots:
+1. Open the app: https://databricks-jobs-monitor-1602460480284688.aws.databricksapps.com
+2. Navigate to each tab
+3. Use your OS screenshot tool (Cmd+Shift+4 on Mac, Win+Shift+S on Windows)
+4. Save screenshots with the names above
