@@ -17,7 +17,6 @@ import {
   Skeleton,
   Alert,
   Tooltip,
-  IconButton,
   TextField,
   InputAdornment,
 } from '@mui/material';
@@ -27,7 +26,6 @@ import {
   Speed as SpeedIcon,
   CloudQueue as ClusterIcon,
   Search as SearchIcon,
-  Info as InfoIcon,
 } from '@mui/icons-material';
 import { getClusterConfigs } from '../services/api';
 import type { ClusterConfig } from '../types';

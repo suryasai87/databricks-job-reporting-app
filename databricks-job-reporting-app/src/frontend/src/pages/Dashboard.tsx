@@ -8,8 +8,6 @@ import {
   Card,
   CardContent,
   Skeleton,
-  Chip,
-  LinearProgress,
   useTheme,
 } from '@mui/material';
 import {
@@ -63,7 +61,6 @@ const MetricCard: React.FC<MetricCardProps> = ({
   color,
   loading,
 }) => {
-  const theme = useTheme();
   return (
     <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
       <Card
@@ -307,7 +304,7 @@ const Dashboard: React.FC = () => {
                     dataKey="value"
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   >
-                    {typeChartData.map((entry, index) => (
+                    {typeChartData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>

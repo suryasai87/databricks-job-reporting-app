@@ -24,7 +24,6 @@ import {
   AttachMoney as MoneyIcon,
   TrendingUp as TrendingIcon,
   WorkHistory as JobsIcon,
-  Person as PersonIcon,
 } from '@mui/icons-material';
 import {
   AreaChart,
@@ -39,7 +38,6 @@ import {
   Cell,
   BarChart,
   Bar,
-  Legend,
 } from 'recharts';
 import {
   getCostSummary,
@@ -279,7 +277,7 @@ const CostAnalytics: React.FC = () => {
                     paddingAngle={2}
                     dataKey="cost_usd"
                     nameKey="identity"
-                    label={({ name, percent }) =>
+                    label={({ percent }) =>
                       percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''
                     }
                   >

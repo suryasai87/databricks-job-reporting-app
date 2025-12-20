@@ -37,7 +37,6 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
-  Cell,
 } from 'recharts';
 import {
   getFailedJobs,

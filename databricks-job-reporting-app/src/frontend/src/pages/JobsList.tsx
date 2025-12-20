@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import {
   Box,
   Paper,
@@ -26,7 +25,6 @@ import {
 } from '@mui/material';
 import {
   Search as SearchIcon,
-  FilterList as FilterIcon,
   Refresh as RefreshIcon,
   CheckCircle as SuccessIcon,
   Error as FailedIcon,
@@ -127,8 +125,8 @@ const JobsList: React.FC = () => {
     return [...filteredJobs].sort((a, b) => {
       const aVal = a[orderBy];
       const bVal = b[orderBy];
-      if (aVal === null) return 1;
-      if (bVal === null) return -1;
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
       if (aVal < bVal) return order === 'asc' ? -1 : 1;
       if (aVal > bVal) return order === 'asc' ? 1 : -1;
       return 0;
@@ -140,11 +138,11 @@ const JobsList: React.FC = () => {
   }, [sortedJobs, page, rowsPerPage]);
 
   const uniqueStatuses = useMemo(() => {
-    return Array.from(new Set(jobs.map((j) => j.result_state).filter(Boolean)));
+    return Array.from(new Set(jobs.map((j) => j.result_state).filter((s): s is string => Boolean(s))));
   }, [jobs]);
 
   const uniqueTypes = useMemo(() => {
-    return Array.from(new Set(jobs.map((j) => j.run_type).filter(Boolean)));
+    return Array.from(new Set(jobs.map((j) => j.run_type).filter((t): t is string => Boolean(t))));
   }, [jobs]);
 
   return (
@@ -309,15 +307,10 @@ const JobsList: React.FC = () => {
                 </TableRow>
               ) : (
                 paginatedJobs.map((job) => (
-                  <motion.tr
+                  <TableRow
                     key={`${job.job_id}-${job.run_id}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    component={TableRow}
-                    sx={{
-                      '&:hover': { bgcolor: 'action.hover' },
-                      cursor: 'pointer',
-                    }}
+                    hover
+                    sx={{ cursor: 'pointer' }}
                   >
                     <TableCell>
                       <Box>
@@ -377,7 +370,7 @@ const JobsList: React.FC = () => {
                         {job.cost_usd ? `$${job.cost_usd.toFixed(2)}` : '-'}
                       </Typography>
                     </TableCell>
-                  </motion.tr>
+                  </TableRow>
                 ))
               )}
             </TableBody>

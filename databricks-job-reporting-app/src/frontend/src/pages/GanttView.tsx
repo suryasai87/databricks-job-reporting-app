@@ -17,7 +17,6 @@ import {
 import {
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
-  Refresh as RefreshIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
 import { getJobRuns, getOverlaps, getConcurrentJobsOverTime } from '../services/api';
