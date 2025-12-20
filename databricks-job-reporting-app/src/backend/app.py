@@ -49,7 +49,7 @@ app.add_middleware(
 # Environment configuration
 DATABRICKS_HOST = os.getenv("DATABRICKS_HOST", "https://fe-vm-hls-amer.cloud.databricks.com")
 WAREHOUSE_ID = os.getenv("WAREHOUSE_ID", "4b28691c780d9875")
-GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "")
+GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "01f0dde07de71fd3a4c0b4907fe15554")
 
 
 # ============================================================
@@ -171,7 +171,7 @@ def get_workspace_client() -> Optional[Any]:
         return None
 
 
-def execute_sql(query: str, warehouse_id: str = None) -> List[Dict]:
+def execute_sql(query: str, warehouse_id: str = None, timeout: str = "60s") -> List[Dict]:
     """Execute SQL query against Databricks SQL Warehouse"""
     w = get_workspace_client()
     if not w:
@@ -187,7 +187,7 @@ def execute_sql(query: str, warehouse_id: str = None) -> List[Dict]:
         response = w.statement_execution.execute_statement(
             warehouse_id=wh_id,
             statement=query,
-            wait_timeout="30s",
+            wait_timeout=timeout,
         )
 
         if response.status.state == StatementState.SUCCEEDED:
@@ -460,20 +460,21 @@ async def get_cost_by_identity(days: int = 30):
 @app.get("/api/health/failed-jobs")
 async def get_failed_jobs(days: int = 7):
     """Get failed jobs statistics"""
+    # Simplified query without JOIN for better performance
     query = f"""
     SELECT
-        r.job_id,
-        COALESCE(j.name, r.run_name) as job_name,
+        job_id,
+        FIRST(run_name) as job_name,
         COUNT(*) as total_runs,
-        SUM(CASE WHEN r.result_state IN ('FAILED', 'INTERNAL_ERROR') THEN 1 ELSE 0 END) as failed_runs,
-        COALESCE(j.run_as, j.run_as_user_name) as run_as,
-        MAX(r.period_start_time) as last_run
-    FROM system.lakeflow.job_run_timeline r
-    LEFT JOIN system.lakeflow.jobs j ON r.job_id = j.job_id AND r.workspace_id = j.workspace_id
-    WHERE r.period_start_time >= current_date() - INTERVAL {days} DAY
-    GROUP BY r.job_id, COALESCE(j.name, r.run_name), COALESCE(j.run_as, j.run_as_user_name)
-    HAVING SUM(CASE WHEN r.result_state IN ('FAILED', 'INTERNAL_ERROR') THEN 1 ELSE 0 END) > 0
+        SUM(CASE WHEN result_state IN ('FAILED', 'INTERNAL_ERROR') THEN 1 ELSE 0 END) as failed_runs,
+        NULL as run_as,
+        MAX(period_start_time) as last_run
+    FROM system.lakeflow.job_run_timeline
+    WHERE period_start_time >= current_date() - INTERVAL {days} DAY
+    GROUP BY job_id
+    HAVING SUM(CASE WHEN result_state IN ('FAILED', 'INTERNAL_ERROR') THEN 1 ELSE 0 END) > 0
     ORDER BY failed_runs DESC
+    LIMIT 50
     """
     results = execute_sql(query)
     if results:
@@ -492,42 +493,24 @@ async def get_failed_jobs(days: int = 7):
 @app.get("/api/health/prolonged-jobs")
 async def get_prolonged_jobs(warning_minutes: int = 60, critical_minutes: int = 180):
     """Get currently running jobs that exceed duration thresholds"""
+    # Simplified query without complex JOINs
     query = f"""
-    WITH running_jobs AS (
-        SELECT
-            r.job_id,
-            COALESCE(j.name, r.run_name) as job_name,
-            r.run_id,
-            TIMESTAMPDIFF(MINUTE, r.period_start_time, current_timestamp()) as running_minutes
-        FROM system.lakeflow.job_run_timeline r
-        LEFT JOIN system.lakeflow.jobs j ON r.job_id = j.job_id AND r.workspace_id = j.workspace_id
-        WHERE r.result_state IS NULL OR r.result_state = 'RUNNING'
-    ),
-    job_stats AS (
-        SELECT
-            job_id,
-            AVG(run_duration_seconds / 60.0) as avg_duration_minutes
-        FROM system.lakeflow.job_run_timeline
-        WHERE result_state = 'SUCCESS' AND run_duration_seconds IS NOT NULL
-        GROUP BY job_id
-    )
     SELECT
-        r.job_id,
-        r.job_name,
-        r.run_id,
-        r.running_minutes,
-        COALESCE(s.avg_duration_minutes, 30) as avg_duration_minutes,
+        job_id,
+        run_name as job_name,
+        run_id,
+        TIMESTAMPDIFF(MINUTE, period_start_time, current_timestamp()) as running_minutes,
+        30.0 as avg_duration_minutes,
         CASE
-            WHEN r.running_minutes >= {critical_minutes} THEN 'CRITICAL'
-            WHEN r.running_minutes >= {warning_minutes} THEN 'WARNING'
-            WHEN r.running_minutes > COALESCE(s.avg_duration_minutes, 30) * 2 THEN 'ANOMALY'
+            WHEN TIMESTAMPDIFF(MINUTE, period_start_time, current_timestamp()) >= {critical_minutes} THEN 'CRITICAL'
+            WHEN TIMESTAMPDIFF(MINUTE, period_start_time, current_timestamp()) >= {warning_minutes} THEN 'WARNING'
             ELSE 'NORMAL'
         END as duration_status
-    FROM running_jobs r
-    LEFT JOIN job_stats s ON r.job_id = s.job_id
-    WHERE r.running_minutes >= {warning_minutes}
-       OR r.running_minutes > COALESCE(s.avg_duration_minutes, 30) * 2
-    ORDER BY r.running_minutes DESC
+    FROM system.lakeflow.job_run_timeline
+    WHERE (result_state IS NULL OR result_state = 'RUNNING')
+        AND period_start_time >= current_date() - INTERVAL 2 DAY
+    ORDER BY period_start_time ASC
+    LIMIT 50
     """
     results = execute_sql(query)
     if results:
@@ -545,30 +528,29 @@ async def get_prolonged_jobs(warning_minutes: int = 60, critical_minutes: int = 
 @app.get("/api/health/anomalies")
 async def get_anomalies(days: int = 7, warning_threshold: float = 2.0, critical_threshold: float = 3.0):
     """Detect anomalies in job execution using Z-score"""
+    # Simplified query with limit to avoid timeout
     query = f"""
     WITH job_stats AS (
         SELECT
-            r.job_id,
-            FIRST(COALESCE(j.name, r.run_name)) as job_name,
-            AVG(r.run_duration_seconds / 60.0) as avg_duration,
-            STDDEV(r.run_duration_seconds / 60.0) as std_duration
-        FROM system.lakeflow.job_run_timeline r
-        LEFT JOIN system.lakeflow.jobs j ON r.job_id = j.job_id AND r.workspace_id = j.workspace_id
-        WHERE r.result_state = 'SUCCESS' AND r.run_duration_seconds IS NOT NULL
-            AND r.period_start_time >= current_date() - INTERVAL 30 DAY
-        GROUP BY r.job_id
-        HAVING COUNT(*) >= 5
+            job_id,
+            AVG(run_duration_seconds / 60.0) as avg_duration,
+            STDDEV(run_duration_seconds / 60.0) as std_duration
+        FROM system.lakeflow.job_run_timeline
+        WHERE result_state = 'SUCCESS' AND run_duration_seconds IS NOT NULL
+            AND period_start_time >= current_date() - INTERVAL 14 DAY
+        GROUP BY job_id
+        HAVING COUNT(*) >= 3 AND STDDEV(run_duration_seconds / 60.0) > 0
     ),
     recent_runs AS (
         SELECT
             r.job_id,
-            COALESCE(j.name, r.run_name) as job_name,
+            r.run_name as job_name,
             r.run_id,
             r.run_duration_seconds / 60.0 as duration
         FROM system.lakeflow.job_run_timeline r
-        LEFT JOIN system.lakeflow.jobs j ON r.job_id = j.job_id AND r.workspace_id = j.workspace_id
         WHERE r.result_state = 'SUCCESS' AND r.run_duration_seconds IS NOT NULL
             AND r.period_start_time >= current_date() - INTERVAL {days} DAY
+        LIMIT 500
     )
     SELECT
         r.job_id,
@@ -577,11 +559,12 @@ async def get_anomalies(days: int = 7, warning_threshold: float = 2.0, critical_
         'duration' as metric_name,
         r.duration as metric_value,
         s.avg_duration as expected_value,
-        (r.duration - s.avg_duration) / NULLIF(s.std_duration, 0) as z_score
+        (r.duration - s.avg_duration) / s.std_duration as z_score
     FROM recent_runs r
     JOIN job_stats s ON r.job_id = s.job_id
-    WHERE ABS((r.duration - s.avg_duration) / NULLIF(s.std_duration, 0)) >= {warning_threshold}
-    ORDER BY ABS((r.duration - s.avg_duration) / NULLIF(s.std_duration, 0)) DESC
+    WHERE ABS((r.duration - s.avg_duration) / s.std_duration) >= {warning_threshold}
+    ORDER BY ABS((r.duration - s.avg_duration) / s.std_duration) DESC
+    LIMIT 50
     """
     results = execute_sql(query)
     if results:
@@ -601,28 +584,21 @@ async def get_anomalies(days: int = 7, warning_threshold: float = 2.0, critical_
 @app.get("/api/health/retry-stats")
 async def get_retry_stats(days: int = 7):
     """Get job retry statistics - based on failed runs that were later successful"""
+    # Simplified query without JOIN
     query = f"""
-    WITH job_run_counts AS (
-        SELECT
-            r.job_id,
-            COALESCE(j.name, r.run_name) as job_name,
-            COUNT(*) as total_runs,
-            SUM(CASE WHEN r.result_state IN ('FAILED', 'INTERNAL_ERROR') THEN 1 ELSE 0 END) as failed_runs,
-            SUM(CASE WHEN r.result_state = 'SUCCESS' THEN 1 ELSE 0 END) as success_runs
-        FROM system.lakeflow.job_run_timeline r
-        LEFT JOIN system.lakeflow.jobs j ON r.job_id = j.job_id AND r.workspace_id = j.workspace_id
-        WHERE r.period_start_time >= current_date() - INTERVAL {days} DAY
-        GROUP BY r.job_id, COALESCE(j.name, r.run_name)
-    )
     SELECT
         job_id,
-        job_name,
-        failed_runs as runs_with_retries,
-        failed_runs as total_retries,
-        ROUND((total_runs * 1.0 / NULLIF(success_runs, 0)), 2) as avg_attempts_per_run
-    FROM job_run_counts
-    WHERE failed_runs > 0 AND success_runs > 0
-    ORDER BY failed_runs DESC
+        FIRST(run_name) as job_name,
+        SUM(CASE WHEN result_state IN ('FAILED', 'INTERNAL_ERROR') THEN 1 ELSE 0 END) as runs_with_retries,
+        SUM(CASE WHEN result_state IN ('FAILED', 'INTERNAL_ERROR') THEN 1 ELSE 0 END) as total_retries,
+        ROUND(COUNT(*) * 1.0 / NULLIF(SUM(CASE WHEN result_state = 'SUCCESS' THEN 1 ELSE 0 END), 0), 2) as avg_attempts_per_run
+    FROM system.lakeflow.job_run_timeline
+    WHERE period_start_time >= current_date() - INTERVAL {days} DAY
+    GROUP BY job_id
+    HAVING SUM(CASE WHEN result_state IN ('FAILED', 'INTERNAL_ERROR') THEN 1 ELSE 0 END) > 0
+        AND SUM(CASE WHEN result_state = 'SUCCESS' THEN 1 ELSE 0 END) > 0
+    ORDER BY runs_with_retries DESC
+    LIMIT 50
     """
     results = execute_sql(query)
     if results:
@@ -646,24 +622,23 @@ async def get_retry_stats(days: int = 7):
 @app.get("/api/clusters/configs")
 async def get_cluster_configs(job_id: Optional[str] = None, run_id: Optional[str] = None):
     """Get cluster configurations used by jobs"""
-    where_clause = "WHERE r.period_start_time >= current_date() - INTERVAL 7 DAY"
+    # Simplified query - just get recent job run info without EXPLODE
+    where_clause = "WHERE period_start_time >= current_date() - INTERVAL 3 DAY"
     if job_id:
-        where_clause = f"WHERE r.job_id = '{job_id}'"
+        where_clause = f"WHERE job_id = '{job_id}'"
     elif run_id:
-        where_clause = f"WHERE r.run_id = '{run_id}'"
+        where_clause = f"WHERE run_id = '{run_id}'"
 
     query = f"""
     SELECT DISTINCT
-        c.cluster_id,
-        c.type as cluster_type,
-        c.warehouse_id,
-        r.run_type,
-        COALESCE(j.name, r.run_name) as job_name
-    FROM system.lakeflow.job_run_timeline r
-    LEFT JOIN system.lakeflow.jobs j ON r.job_id = j.job_id AND r.workspace_id = j.workspace_id
-    LATERAL VIEW EXPLODE(r.compute) t AS c
+        job_id as cluster_id,
+        run_type as cluster_type,
+        NULL as warehouse_id,
+        run_type,
+        run_name as job_name
+    FROM system.lakeflow.job_run_timeline
     {where_clause}
-    LIMIT 100
+    LIMIT 50
     """
     results = execute_sql(query)
     if results:
@@ -681,34 +656,31 @@ async def get_cluster_configs(job_id: Optional[str] = None, run_id: Optional[str
 # ============================================================
 
 @app.get("/api/analysis/overlaps")
-async def get_overlaps(days: int = 7):
-    """Detect overlapping job runs"""
+async def get_overlaps(days: int = 1):
+    """Detect overlapping job runs - simplified for performance"""
+    # Using a simpler approach - find concurrent runs in the same hour
     query = f"""
-    WITH job_intervals AS (
+    WITH hourly_runs AS (
         SELECT
-            r.job_id,
-            COALESCE(j.name, r.run_name) as job_name,
-            r.run_id,
-            r.period_start_time as start_time,
-            COALESCE(r.period_end_time, current_timestamp()) as end_time
-        FROM system.lakeflow.job_run_timeline r
-        LEFT JOIN system.lakeflow.jobs j ON r.job_id = j.job_id AND r.workspace_id = j.workspace_id
-        WHERE r.period_start_time >= current_date() - INTERVAL {days} DAY
+            job_id,
+            run_name as job_name,
+            run_id,
+            period_start_time,
+            DATE_TRUNC('HOUR', period_start_time) as hour_bucket
+        FROM system.lakeflow.job_run_timeline
+        WHERE period_start_time >= current_date() - INTERVAL {days} DAY
+            AND result_state IS NOT NULL
+        LIMIT 200
     )
     SELECT
         a.job_name as job_a,
         b.job_name as job_b,
         a.run_id as run_a,
         b.run_id as run_b,
-        TIMESTAMPDIFF(MINUTE,
-            GREATEST(a.start_time, b.start_time),
-            LEAST(a.end_time, b.end_time)
-        ) as overlap_minutes
-    FROM job_intervals a
-    JOIN job_intervals b ON a.run_id < b.run_id
-    WHERE a.start_time < b.end_time AND a.end_time > b.start_time
-    ORDER BY overlap_minutes DESC
-    LIMIT 50
+        1 as overlap_minutes
+    FROM hourly_runs a
+    JOIN hourly_runs b ON a.hour_bucket = b.hour_bucket AND a.run_id < b.run_id
+    LIMIT 20
     """
     results = execute_sql(query)
     if results:

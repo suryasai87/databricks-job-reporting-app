@@ -72,8 +72,8 @@ env:
   - name: WAREHOUSE_ID
     value: "4b28691c780d9875"
   - name: GENIE_SPACE_ID
-    description: "Genie Space ID for AI Assistant - configure in Databricks Apps settings"
-    value: ""
+    description: "Genie Space ID for AI Assistant"
+    value: "01f0dde07de71fd3a4c0b4907fe15554"
 """
 
     with open(app_dir / "app.yaml", "w") as f:
