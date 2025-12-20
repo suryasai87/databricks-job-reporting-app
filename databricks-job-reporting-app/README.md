@@ -37,6 +37,68 @@ A comprehensive monitoring application for Databricks jobs with AI-powered insig
 
 ![Gantt View](docs/screenshots/gantt-view.png)
 
+### Matrix View (NEW)
+- **Run History Grid**: Visual grid showing last N runs for each job
+- **Color-coded status cells**: SUCCESS (green), FAILED (red), RUNNING (yellow), PENDING (grey)
+- **Hover tooltips**: Show run details including duration, start/end times
+- **Click navigation**: Navigate to run details on click
+- **Search and filter**: Find specific jobs in the matrix
+- **Configurable**: Adjust days and runs per job parameters
+
+![Matrix View](docs/screenshots/matrix-view.png)
+
+### Metrics Dashboard (NEW - 3-Tier Architecture)
+
+The Metrics page provides a unified view of performance metrics from multiple sources:
+
+#### Tier 1: Spark Executor Metrics (Always Available)
+- **Memory usage**: Per-executor memory utilization with progress bars
+- **GC time tracking**: Garbage collection time per executor
+- **Shuffle I/O**: Read/write bytes for shuffle operations
+- **Task counts**: Active, completed, and failed tasks per executor
+- **Summary statistics**: Aggregated metrics across all executors
+
+#### Tier 2: Cloud Metrics (If Configured)
+- **Azure Monitor integration**: CPU, memory, disk, network metrics via Azure Monitor SDK
+- **AWS CloudWatch integration**: Instance-level metrics via boto3
+- **Auto-detection**: Automatically detects configured cloud provider
+- **Instance-level details**: Metrics broken down by VM/instance
+
+#### Tier 3: OpenTelemetry (OTEL) Metrics
+- **OTEL integration**: Query metrics from Delta table (`jobs_monitor.metrics.otel_metrics`)
+- **Init script generator**: Download init script for cluster configuration
+- **Setup instructions**: Step-by-step guide for OTEL configuration
+- **Databricks Runtime 15.4+ native support**: Automatic when using latest DBR
+
+#### Summary Tab
+- **Best available source**: Automatically uses the highest-fidelity metrics source
+- **Tier availability status**: Shows which tiers are configured and active
+- **Key metrics overview**: CPU, memory, I/O, tasks at a glance
+
+![Metrics Dashboard](docs/screenshots/metrics.png)
+
+### Task DAG Visualization (NEW)
+- **SVG-based DAG rendering**: Visualize task dependencies without external libraries
+- **Topological sorting**: Automatic layout using Kahn's algorithm
+- **Status colors**: SUCCESS (green), FAILED (red), RUNNING (yellow), PENDING (grey)
+- **Interactive selection**: Click nodes to see task details
+- **Curved edges**: Smooth bezier curves connecting dependent tasks
+- **Details panel**: Show task timing, duration, and error information
+
+### SLA Tracking & Percentile Metrics (NEW)
+- **SLA compliance monitoring**: Track jobs exceeding 2x their historical average duration
+- **Compliance rate**: Overall percentage of runs meeting SLA
+- **Violation details**: List of jobs with SLA violations and counts
+- **Duration percentiles**: p50, p90, p95, p99 using PERCENTILE_CONT
+- **Per-job percentiles**: Breakdown of percentile metrics by job
+- **Historical analysis**: Configurable time range (7-90 days)
+
+### Rerun/Repair Capabilities (NEW)
+- **Run Now**: Trigger immediate job execution with optional parameters
+- **Cancel Run**: Stop a running job execution
+- **Repair Run**: Retry failed tasks or rerun all failed tasks
+- **Run Output**: View notebook output and error traces for completed runs
+
 ### Cost Analytics
 - Total cost and DBU consumption metrics
 - Daily cost trends with bar charts
@@ -86,6 +148,10 @@ A comprehensive monitoring application for Databricks jobs with AI-powered insig
 - **Authentication**: Databricks SSO (OBO, U2M, M2M OAuth)
 - **Data Source**: Databricks System Tables (system.lakeflow.*, system.billing.*)
 - **AI**: Databricks Genie Spaces
+- **Metrics Collection**:
+  - Tier 1: Spark UI REST API (driver-proxy-api)
+  - Tier 2: Azure Monitor SDK / AWS CloudWatch (boto3)
+  - Tier 3: OpenTelemetry (OTEL) via Delta table
 
 ## Quick Start
 
@@ -163,7 +229,34 @@ The deployment script automatically:
 |----------|-------------|---------|
 | `DATABRICKS_HOST` | Databricks workspace URL | `https://fe-vm-hls-amer.cloud.databricks.com` |
 | `WAREHOUSE_ID` | SQL Warehouse ID for queries | `4b28691c780d9875` |
-| `GENIE_SPACE_ID` | Genie Space ID for AI Assistant | `` (empty) |
+| `GENIE_SPACE_ID` | Genie Space ID for AI Assistant | `01f0dde07de71fd3a4c0b4907fe15554` |
+
+### Cloud Metrics Configuration (Tier 2)
+
+#### Azure Monitor
+```bash
+export AZURE_TENANT_ID="your-tenant-id"
+export AZURE_CLIENT_ID="your-client-id"
+export AZURE_CLIENT_SECRET="your-client-secret"
+export AZURE_MONITOR_WORKSPACE_ID="your-log-analytics-workspace-id"
+```
+
+#### AWS CloudWatch
+```bash
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_REGION="us-east-1"
+```
+
+### OTEL Configuration (Tier 3)
+
+For clusters running Databricks Runtime 15.4+, OTEL metrics are collected natively.
+
+For older runtimes, download and configure the init script:
+1. Navigate to Metrics > OTEL tab
+2. Click "Download Init Script"
+3. Upload to DBFS or Workspace
+4. Configure cluster to use the init script
 
 ### Configuring the SQL Warehouse
 
@@ -287,14 +380,34 @@ databricks-job-reporting-app/
 │   ├── frontend/           # React application
 │   │   ├── src/
 │   │   │   ├── pages/      # Page components
+│   │   │   │   ├── Dashboard.tsx
+│   │   │   │   ├── JobsList.tsx
+│   │   │   │   ├── GanttView.tsx
+│   │   │   │   ├── MatrixView.tsx    # NEW: Run history grid
+│   │   │   │   ├── Metrics.tsx       # NEW: 3-tier metrics
+│   │   │   │   ├── CostAnalytics.tsx
+│   │   │   │   ├── Health.tsx
+│   │   │   │   ├── ClusterAnalysis.tsx
+│   │   │   │   ├── AIAssistant.tsx
+│   │   │   │   ├── Reports.tsx
+│   │   │   │   └── Settings.tsx
 │   │   │   ├── components/ # Shared UI components
+│   │   │   │   ├── TaskDAG.tsx       # NEW: DAG visualization
+│   │   │   │   └── TaskDetails.tsx   # NEW: Task detail panel
 │   │   │   ├── services/   # API services
 │   │   │   ├── types/      # TypeScript types
 │   │   │   └── theme/      # MUI theme
 │   │   └── package.json
 │   └── backend/            # FastAPI application
 │       ├── app.py          # Main application
-│       └── requirements.txt
+│       ├── requirements.txt
+│       └── collectors/     # NEW: Metrics collectors
+│           ├── __init__.py
+│           ├── spark_ui_collector.py      # Tier 1: Spark UI
+│           ├── azure_monitor_collector.py # Tier 2: Azure
+│           ├── cloudwatch_collector.py    # Tier 2: AWS
+│           ├── otel_collector.py          # Tier 3: OTEL
+│           └── otel_init_script.py        # OTEL init script
 └── build/                  # Build output (generated)
     └── app/                # Deployment package
 ```
@@ -327,6 +440,15 @@ Check authentication status at `/api/auth/status`.
 - `GET /api/jobs/summary` - Run summary statistics
 - `GET /api/jobs/by-type` - Runs grouped by type
 - `GET /api/jobs/daily` - Daily run counts
+- `GET /api/jobs/matrix` - Matrix view data (NEW)
+- `GET /api/jobs/sla-status` - SLA compliance status (NEW)
+- `GET /api/jobs/duration-percentiles` - Duration percentiles (NEW)
+
+### Job Actions (NEW)
+- `POST /api/jobs/{job_id}/run-now` - Trigger job run immediately
+- `POST /api/jobs/runs/{run_id}/cancel` - Cancel a running job
+- `POST /api/jobs/runs/{run_id}/repair` - Repair/retry failed run
+- `GET /api/jobs/runs/{run_id}/output` - Get run output/logs
 
 ### Costs
 - `GET /api/costs/summary` - Cost summary
@@ -339,6 +461,21 @@ Check authentication status at `/api/auth/status`.
 - `GET /api/health/prolonged-jobs` - Long-running jobs
 - `GET /api/health/anomalies` - Detected anomalies
 - `GET /api/health/retry-stats` - Retry statistics
+
+### Metrics (NEW - 3-Tier Architecture)
+- `GET /api/metrics/executors` - Tier 1: Spark executor metrics
+- `GET /api/metrics/cloud` - Tier 2: Cloud metrics (Azure/AWS)
+- `GET /api/metrics/otel/status` - Tier 3: OTEL status
+- `GET /api/metrics/summary` - Best available metrics summary
+
+### OTEL (NEW)
+- `GET /api/otel/status` - OTEL integration status
+- `GET /api/otel/metrics` - Query OTEL metrics from Delta table
+- `GET /api/otel/spark-metrics` - Spark-specific OTEL metrics
+- `GET /api/otel/cluster-summary/{cluster_id}` - Cluster metrics summary
+- `GET /api/otel/init-script` - Get OTEL init script info
+- `GET /api/otel/init-script/download` - Download init script
+- `GET /api/otel/init-script/minimal` - Minimal init script version
 
 ### Analysis
 - `GET /api/clusters/configs` - Cluster configurations
@@ -370,6 +507,11 @@ Check authentication status at `/api/auth/status`.
 - Ensure Genie Space has access to required tables
 - Check that the SQL Warehouse is running
 
+### Metrics Collection Issues
+- **Tier 1 (Spark UI)**: Requires active Spark cluster with driver-proxy-api
+- **Tier 2 (Cloud)**: Check Azure/AWS credentials and permissions
+- **Tier 3 (OTEL)**: Verify Delta table exists and init script is configured
+
 ## Screenshots
 
 To take screenshots of the app:
@@ -383,12 +525,31 @@ Screenshot naming convention:
 - `dashboard.png`
 - `jobs-list.png`
 - `gantt-view.png`
+- `matrix-view.png` (NEW)
+- `metrics.png` (NEW)
 - `cost-analytics.png`
 - `health.png`
 - `cluster-analysis.png`
 - `ai-assistant.png`
 - `reports.png`
 - `settings.png`
+
+## Changelog
+
+### v1.1.0 (Latest)
+- **Matrix View**: Added run history grid with color-coded status cells
+- **Metrics Dashboard**: 3-tier architecture (Spark UI, Cloud, OTEL)
+- **Task DAG**: SVG-based visualization of task dependencies
+- **SLA Tracking**: Compliance monitoring with percentile metrics
+- **Rerun/Repair**: Job execution control via REST API
+- **OTEL Integration**: OpenTelemetry metrics collection and init scripts
+- **Cloud Metrics**: Azure Monitor and AWS CloudWatch support
+
+### v1.0.0
+- Initial release with Dashboard, Jobs List, Gantt View
+- Cost Analytics and Health monitoring
+- AI Assistant with Genie Spaces integration
+- Databricks SSO authentication
 
 ## License
 

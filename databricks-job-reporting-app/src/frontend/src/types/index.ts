@@ -122,3 +122,135 @@ export interface GenieConversation {
   conversation_id: string;
   messages: ChatMessage[];
 }
+
+// Matrix View Types
+export interface MatrixRunCell {
+  run_id: string | null;
+  result_state: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  duration_seconds: number | null;
+}
+
+export interface MatrixJobRow {
+  job_id: string | null;
+  job_name: string | null;
+  runs: (MatrixRunCell | null)[];
+}
+
+export interface MatrixData {
+  jobs: MatrixJobRow[];
+  days: number;
+  runs_per_job: number;
+}
+
+// Metrics Types - 3-Tier Architecture
+
+// Tier 1: Executor Metrics (Always Available)
+export interface ExecutorMetric {
+  executor_id: string;
+  host: string;
+  memory_used_mb: number;
+  memory_max_mb: number;
+  memory_usage_percent: number;
+  gc_time_ms: number;
+  shuffle_read_bytes: number;
+  shuffle_write_bytes: number;
+  active_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  total_duration_ms: number;
+}
+
+export interface ExecutorMetricsResponse {
+  available: boolean;
+  timestamp: string;
+  executors: ExecutorMetric[];
+  summary: {
+    total_executors: number;
+    total_memory_used_mb: number;
+    total_memory_max_mb: number;
+    avg_memory_usage_percent: number;
+    total_gc_time_ms: number;
+    total_shuffle_read_bytes: number;
+    total_shuffle_write_bytes: number;
+    total_active_tasks: number;
+    total_completed_tasks: number;
+    total_failed_tasks: number;
+  };
+}
+
+// Tier 2: Cloud Metrics (If Configured)
+export interface CloudMetric {
+  instance_id: string;
+  instance_type: string;
+  cpu_usage_percent: number;
+  memory_usage_percent: number;
+  disk_read_bytes_per_sec: number;
+  disk_write_bytes_per_sec: number;
+  network_in_bytes_per_sec: number;
+  network_out_bytes_per_sec: number;
+  timestamp: string;
+}
+
+export interface CloudMetricsResponse {
+  available: boolean;
+  configured: boolean;
+  provider?: string;
+  message?: string;
+  timestamp?: string;
+  metrics?: CloudMetric[];
+  summary?: {
+    avg_cpu_percent: number;
+    avg_memory_percent: number;
+    total_disk_read_bytes_per_sec: number;
+    total_disk_write_bytes_per_sec: number;
+    total_network_in_bytes_per_sec: number;
+    total_network_out_bytes_per_sec: number;
+  };
+}
+
+// Tier 3: OTEL Metrics (Setup Instructions or Data)
+export interface OtelMetric {
+  name: string;
+  value: number;
+  unit: string;
+  labels: Record<string, string>;
+  timestamp: string;
+}
+
+export interface OtelMetricsResponse {
+  available: boolean;
+  configured: boolean;
+  message?: string;
+  endpoint?: string;
+  init_script?: string;
+  metrics?: OtelMetric[];
+  dashboards?: {
+    name: string;
+    url: string;
+  }[];
+}
+
+// Summary Metrics (Best Available)
+export interface MetricsSummaryResponse {
+  source: 'executor' | 'cloud' | 'otel';
+  source_label: string;
+  available_tiers: {
+    executor: boolean;
+    cloud: boolean;
+    otel: boolean;
+  };
+  metrics: {
+    cpu_usage_percent?: number;
+    memory_usage_percent?: number;
+    disk_io_bytes_per_sec?: number;
+    network_io_bytes_per_sec?: number;
+    gc_time_ms?: number;
+    shuffle_io_bytes?: number;
+    active_tasks?: number;
+    completed_tasks?: number;
+    failed_tasks?: number;
+  };
+  timestamp: string;
+}

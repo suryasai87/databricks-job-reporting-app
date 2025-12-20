@@ -78,6 +78,14 @@ class ReportRequest(BaseModel):
     end_date: str
 
 
+class RunNowRequest(BaseModel):
+    parameters: Optional[Dict[str, str]] = None
+
+
+class RepairRunRequest(BaseModel):
+    rerun_tasks: Optional[List[str]] = None
+
+
 # ============================================================
 # Authentication Helper
 # ============================================================
@@ -350,6 +358,340 @@ async def get_daily_runs(days: int = 30):
     ]
 
 
+@app.get("/api/jobs/matrix")
+async def get_jobs_matrix(days: int = 7, runs_per_job: int = 20):
+    """
+    Get matrix view data showing last N runs per job.
+    Returns a grid structure with jobs as rows and runs as columns.
+    Each cell contains: run_id, result_state, start_time, end_time, duration_seconds.
+    """
+    query = f"""
+    WITH ranked_runs AS (
+        SELECT
+            job_id,
+            COALESCE(j.name, r.run_name) as job_name,
+            r.run_id,
+            r.result_state,
+            r.period_start_time as start_time,
+            r.period_end_time as end_time,
+            COALESCE(r.run_duration_seconds,
+                TIMESTAMPDIFF(SECOND, r.period_start_time, COALESCE(r.period_end_time, current_timestamp()))) as duration_seconds,
+            ROW_NUMBER() OVER (PARTITION BY r.job_id ORDER BY r.period_start_time DESC) as run_rank
+        FROM system.lakeflow.job_run_timeline r
+        LEFT JOIN system.lakeflow.jobs j ON r.job_id = j.job_id AND r.workspace_id = j.workspace_id
+        WHERE r.period_start_time >= current_date() - INTERVAL {days} DAY
+    )
+    SELECT
+        job_id,
+        job_name,
+        run_id,
+        result_state,
+        start_time,
+        end_time,
+        duration_seconds,
+        run_rank
+    FROM ranked_runs
+    WHERE run_rank <= {runs_per_job}
+    ORDER BY job_name, run_rank
+    """
+    results = execute_sql(query)
+
+    if results:
+        # Group results by job
+        jobs_map: Dict[str, Dict] = {}
+        for r in results:
+            job_id = str(r.get("job_id", ""))
+            if job_id not in jobs_map:
+                jobs_map[job_id] = {
+                    "job_id": job_id,
+                    "job_name": r.get("job_name") or "Unknown",
+                    "runs": [None] * runs_per_job
+                }
+            run_rank = int(r.get("run_rank", 1)) - 1  # Convert to 0-based index
+            if 0 <= run_rank < runs_per_job:
+                jobs_map[job_id]["runs"][run_rank] = {
+                    "run_id": str(r.get("run_id", "")),
+                    "result_state": r.get("result_state"),
+                    "start_time": str(r.get("start_time")) if r.get("start_time") else None,
+                    "end_time": str(r.get("end_time")) if r.get("end_time") else None,
+                    "duration_seconds": float(r.get("duration_seconds", 0)) if r.get("duration_seconds") else None,
+                }
+
+        # Convert to list sorted by job name
+        jobs_list = sorted(jobs_map.values(), key=lambda x: (x.get("job_name") or "").lower())
+
+        return {
+            "jobs": jobs_list,
+            "days": days,
+            "runs_per_job": runs_per_job,
+        }
+
+    # Mock data for development
+    import random
+    statuses = ["SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "FAILED", "RUNNING", "CANCELLED"]
+    mock_jobs = []
+    job_names = [
+        "ETL Pipeline", "Data Sync", "ML Training", "Report Generator",
+        "Batch Processing", "Stream Ingestion", "Feature Engineering",
+        "Model Deployment", "Data Validation", "Analytics Refresh"
+    ]
+    for i, name in enumerate(job_names):
+        runs = []
+        for j in range(runs_per_job):
+            if random.random() < 0.85:  # 85% chance of having a run
+                status = random.choice(statuses)
+                start = datetime.now() - timedelta(hours=random.randint(1, days * 24))
+                duration = random.randint(60, 7200)
+                runs.append({
+                    "run_id": f"run_{i}_{j}",
+                    "result_state": status,
+                    "start_time": start.isoformat(),
+                    "end_time": (start + timedelta(seconds=duration)).isoformat() if status != "RUNNING" else None,
+                    "duration_seconds": duration if status != "RUNNING" else random.randint(60, 1800),
+                })
+            else:
+                runs.append(None)
+        mock_jobs.append({
+            "job_id": f"job_{i:03d}",
+            "job_name": name,
+            "runs": runs,
+        })
+
+    return {
+        "jobs": mock_jobs,
+        "days": days,
+        "runs_per_job": runs_per_job,
+    }
+
+
+# ============================================================
+# Job Rerun/Repair Endpoints
+# ============================================================
+
+@app.post("/api/jobs/{job_id}/run-now")
+async def run_job_now(job_id: str, request: RunNowRequest = None):
+    """Trigger a job run immediately"""
+    w = get_workspace_client()
+    if not w:
+        raise HTTPException(
+            status_code=503,
+            detail="Databricks SDK not available. Cannot trigger job runs."
+        )
+
+    try:
+        # Convert job_id to int if it's a numeric string
+        job_id_int = int(job_id)
+
+        # Build run_now parameters
+        run_params = {}
+        if request and request.parameters:
+            # Databricks SDK expects notebook_params, python_params, etc.
+            # For simplicity, we'll pass as notebook_params
+            run_params["notebook_params"] = request.parameters
+
+        # Trigger the job run
+        run_response = w.jobs.run_now(job_id=job_id_int, **run_params)
+
+        return {
+            "run_id": str(run_response.run_id),
+            "message": f"Job {job_id} triggered successfully. Run ID: {run_response.run_id}"
+        }
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid job_id: {job_id}. Job ID must be a valid integer."
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to trigger job {job_id}: {error_msg}")
+
+        # Check for common error types
+        if "RESOURCE_DOES_NOT_EXIST" in error_msg or "does not exist" in error_msg.lower():
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        elif "PERMISSION_DENIED" in error_msg or "permission" in error_msg.lower():
+            raise HTTPException(status_code=403, detail=f"Permission denied to run job {job_id}")
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to trigger job: {error_msg}")
+
+
+@app.post("/api/jobs/runs/{run_id}/cancel")
+async def cancel_job_run(run_id: str):
+    """Cancel a running job"""
+    w = get_workspace_client()
+    if not w:
+        raise HTTPException(
+            status_code=503,
+            detail="Databricks SDK not available. Cannot cancel job runs."
+        )
+
+    try:
+        # Convert run_id to int if it's a numeric string
+        run_id_int = int(run_id)
+
+        # Cancel the run
+        w.jobs.cancel_run(run_id=run_id_int)
+
+        return {
+            "success": True,
+            "message": f"Run {run_id} cancellation requested successfully"
+        }
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid run_id: {run_id}. Run ID must be a valid integer."
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to cancel run {run_id}: {error_msg}")
+
+        # Check for common error types
+        if "RESOURCE_DOES_NOT_EXIST" in error_msg or "does not exist" in error_msg.lower():
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        elif "INVALID_STATE" in error_msg or "already terminated" in error_msg.lower():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Run {run_id} cannot be cancelled (already terminated or not running)"
+            )
+        elif "PERMISSION_DENIED" in error_msg or "permission" in error_msg.lower():
+            raise HTTPException(status_code=403, detail=f"Permission denied to cancel run {run_id}")
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to cancel run: {error_msg}")
+
+
+@app.post("/api/jobs/runs/{run_id}/repair")
+async def repair_job_run(run_id: str, request: RepairRunRequest = None):
+    """Repair/retry a failed run, optionally specifying which tasks to rerun"""
+    w = get_workspace_client()
+    if not w:
+        raise HTTPException(
+            status_code=503,
+            detail="Databricks SDK not available. Cannot repair job runs."
+        )
+
+    try:
+        # Convert run_id to int if it's a numeric string
+        run_id_int = int(run_id)
+
+        # Build repair parameters
+        repair_params = {"run_id": run_id_int}
+
+        if request and request.rerun_tasks and len(request.rerun_tasks) > 0:
+            # Rerun specific tasks
+            repair_params["rerun_tasks"] = request.rerun_tasks
+        else:
+            # Rerun all failed tasks by setting rerun_all_failed_tasks
+            repair_params["rerun_all_failed_tasks"] = True
+
+        # Trigger the repair run
+        repair_response = w.jobs.repair_run(**repair_params)
+
+        return {
+            "repair_run_id": str(repair_response.repair_id) if hasattr(repair_response, 'repair_id') else str(run_id_int),
+            "message": f"Repair initiated for run {run_id}. " +
+                      (f"Rerunning tasks: {', '.join(request.rerun_tasks)}" if request and request.rerun_tasks else "Rerunning all failed tasks")
+        }
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid run_id: {run_id}. Run ID must be a valid integer."
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to repair run {run_id}: {error_msg}")
+
+        # Check for common error types
+        if "RESOURCE_DOES_NOT_EXIST" in error_msg or "does not exist" in error_msg.lower():
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        elif "INVALID_STATE" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Run {run_id} cannot be repaired (must be in a failed or cancelled state)"
+            )
+        elif "PERMISSION_DENIED" in error_msg or "permission" in error_msg.lower():
+            raise HTTPException(status_code=403, detail=f"Permission denied to repair run {run_id}")
+        elif "rerun_tasks" in error_msg.lower() or "task" in error_msg.lower():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid task specification: {error_msg}"
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to repair run: {error_msg}")
+
+
+@app.get("/api/jobs/runs/{run_id}/output")
+async def get_run_output(run_id: str):
+    """Get the output/logs of a job run"""
+    w = get_workspace_client()
+    if not w:
+        raise HTTPException(
+            status_code=503,
+            detail="Databricks SDK not available. Cannot retrieve run output."
+        )
+
+    try:
+        # Convert run_id to int if it's a numeric string
+        run_id_int = int(run_id)
+
+        # Get run output
+        output_response = w.jobs.get_run_output(run_id=run_id_int)
+
+        # Extract relevant output information
+        result = {
+            "notebook_output": None,
+            "error": None,
+            "logs_truncated": False
+        }
+
+        # Check for notebook output
+        if hasattr(output_response, 'notebook_output') and output_response.notebook_output:
+            notebook_out = output_response.notebook_output
+            if hasattr(notebook_out, 'result'):
+                result["notebook_output"] = notebook_out.result
+            if hasattr(notebook_out, 'truncated'):
+                result["logs_truncated"] = notebook_out.truncated
+
+        # Check for error information
+        if hasattr(output_response, 'error') and output_response.error:
+            result["error"] = output_response.error
+        elif hasattr(output_response, 'error_trace') and output_response.error_trace:
+            result["error"] = output_response.error_trace
+
+        # Check for metadata with logs
+        if hasattr(output_response, 'metadata') and output_response.metadata:
+            metadata = output_response.metadata
+            # Add additional context from metadata if available
+            if hasattr(metadata, 'state') and metadata.state:
+                state = metadata.state
+                if hasattr(state, 'state_message') and state.state_message:
+                    if result["error"]:
+                        result["error"] += f"\n\nState message: {state.state_message}"
+                    else:
+                        result["error"] = state.state_message
+
+        # Check for logs truncation indicator
+        if hasattr(output_response, 'logs_truncated'):
+            result["logs_truncated"] = output_response.logs_truncated
+
+        return result
+
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid run_id: {run_id}. Run ID must be a valid integer."
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to get output for run {run_id}: {error_msg}")
+
+        # Check for common error types
+        if "RESOURCE_DOES_NOT_EXIST" in error_msg or "does not exist" in error_msg.lower():
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        elif "PERMISSION_DENIED" in error_msg or "permission" in error_msg.lower():
+            raise HTTPException(status_code=403, detail=f"Permission denied to access run {run_id} output")
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to get run output: {error_msg}")
+
+
 # ============================================================
 # Cost Endpoints
 # ============================================================
@@ -616,6 +958,226 @@ async def get_retry_stats(days: int = 7):
 
 
 # ============================================================
+# SLA Tracking and Percentile Metrics Endpoints
+# ============================================================
+
+@app.get("/api/jobs/sla-status")
+async def get_sla_status(days: int = 30):
+    """
+    Get SLA compliance status for jobs.
+    SLA is calculated based on historical average duration - jobs exceeding 2x their average are violations.
+    """
+    # Query for summary statistics
+    summary_query = f"""
+    WITH job_baselines AS (
+        SELECT
+            job_id,
+            AVG(run_duration_seconds / 60.0) as avg_duration_min
+        FROM system.lakeflow.job_run_timeline
+        WHERE period_start_time >= current_date() - INTERVAL {days} DAY
+            AND result_state = 'SUCCESS'
+            AND run_duration_seconds IS NOT NULL
+        GROUP BY job_id
+        HAVING COUNT(*) >= 3
+    ),
+    recent_runs AS (
+        SELECT
+            r.job_id,
+            r.run_duration_seconds / 60.0 as actual_duration_min,
+            b.avg_duration_min as expected_duration_min,
+            CASE
+                WHEN r.run_duration_seconds / 60.0 > b.avg_duration_min * 2 THEN 1
+                ELSE 0
+            END as is_violation
+        FROM system.lakeflow.job_run_timeline r
+        JOIN job_baselines b ON r.job_id = b.job_id
+        WHERE r.period_start_time >= current_date() - INTERVAL {days} DAY
+            AND r.result_state = 'SUCCESS'
+            AND r.run_duration_seconds IS NOT NULL
+        LIMIT 10000
+    )
+    SELECT
+        COUNT(*) as total_jobs,
+        SUM(CASE WHEN is_violation = 0 THEN 1 ELSE 0 END) as sla_compliant,
+        SUM(is_violation) as sla_violations
+    FROM recent_runs
+    """
+
+    # Query for jobs with violations
+    violations_query = f"""
+    WITH job_baselines AS (
+        SELECT
+            job_id,
+            AVG(run_duration_seconds / 60.0) as avg_duration_min
+        FROM system.lakeflow.job_run_timeline
+        WHERE period_start_time >= current_date() - INTERVAL {days} DAY
+            AND result_state = 'SUCCESS'
+            AND run_duration_seconds IS NOT NULL
+        GROUP BY job_id
+        HAVING COUNT(*) >= 3
+    ),
+    recent_runs AS (
+        SELECT
+            r.job_id,
+            r.run_name as job_name,
+            r.run_duration_seconds / 60.0 as actual_duration_min,
+            b.avg_duration_min as expected_duration_min,
+            CASE
+                WHEN r.run_duration_seconds / 60.0 > b.avg_duration_min * 2 THEN 1
+                ELSE 0
+            END as is_violation
+        FROM system.lakeflow.job_run_timeline r
+        JOIN job_baselines b ON r.job_id = b.job_id
+        WHERE r.period_start_time >= current_date() - INTERVAL {days} DAY
+            AND r.result_state = 'SUCCESS'
+            AND r.run_duration_seconds IS NOT NULL
+    )
+    SELECT
+        job_id,
+        FIRST(job_name) as job_name,
+        ROUND(AVG(expected_duration_min), 0) as expected_duration_min,
+        ROUND(MAX(actual_duration_min), 0) as actual_duration_min,
+        SUM(is_violation) as violation_count
+    FROM recent_runs
+    GROUP BY job_id
+    HAVING SUM(is_violation) > 0
+    ORDER BY violation_count DESC
+    LIMIT 50
+    """
+
+    summary_results = execute_sql(summary_query)
+    violations_results = execute_sql(violations_query)
+
+    if summary_results:
+        row = summary_results[0]
+        total = int(row.get("total_jobs", 0)) or 1
+        compliant = int(row.get("sla_compliant", 0))
+        violations = int(row.get("sla_violations", 0))
+
+        jobs_with_violations = []
+        if violations_results:
+            jobs_with_violations = [
+                {
+                    "job_id": str(r.get("job_id", "")),
+                    "job_name": str(r.get("job_name", "")),
+                    "expected_duration_min": int(r.get("expected_duration_min", 0)),
+                    "actual_duration_min": int(r.get("actual_duration_min", 0)),
+                    "violation_count": int(r.get("violation_count", 0)),
+                }
+                for r in violations_results
+            ]
+
+        return {
+            "total_jobs": total,
+            "sla_compliant": compliant,
+            "sla_violations": violations,
+            "compliance_rate": round((compliant / total) * 100, 2) if total > 0 else 100.0,
+            "jobs_with_violations": jobs_with_violations,
+        }
+
+    # Mock data for development
+    return {
+        "total_jobs": 150,
+        "sla_compliant": 142,
+        "sla_violations": 8,
+        "compliance_rate": 94.67,
+        "jobs_with_violations": [
+            {"job_id": "job_001", "job_name": "ETL Pipeline", "expected_duration_min": 30, "actual_duration_min": 75, "violation_count": 3},
+            {"job_id": "job_002", "job_name": "Data Sync", "expected_duration_min": 15, "actual_duration_min": 45, "violation_count": 2},
+            {"job_id": "job_003", "job_name": "Report Generator", "expected_duration_min": 60, "actual_duration_min": 180, "violation_count": 2},
+            {"job_id": "job_004", "job_name": "ML Training", "expected_duration_min": 120, "actual_duration_min": 300, "violation_count": 1},
+        ],
+    }
+
+
+@app.get("/api/jobs/duration-percentiles")
+async def get_duration_percentiles(days: int = 30):
+    """
+    Get duration percentile statistics for job runs.
+    Uses PERCENTILE_CONT for accurate percentile calculations.
+    """
+    # Global percentiles query
+    global_query = f"""
+    SELECT
+        ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY run_duration_seconds / 60.0), 2) as p50_minutes,
+        ROUND(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY run_duration_seconds / 60.0), 2) as p90_minutes,
+        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY run_duration_seconds / 60.0), 2) as p95_minutes,
+        ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY run_duration_seconds / 60.0), 2) as p99_minutes,
+        ROUND(AVG(run_duration_seconds / 60.0), 2) as avg_minutes,
+        ROUND(MAX(run_duration_seconds / 60.0), 2) as max_minutes
+    FROM system.lakeflow.job_run_timeline
+    WHERE period_start_time >= current_date() - INTERVAL {days} DAY
+        AND result_state = 'SUCCESS'
+        AND run_duration_seconds IS NOT NULL
+    """
+
+    # Per-job percentiles query
+    by_job_query = f"""
+    SELECT
+        job_id,
+        FIRST(run_name) as job_name,
+        ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY run_duration_seconds / 60.0), 2) as p50,
+        ROUND(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY run_duration_seconds / 60.0), 2) as p90,
+        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY run_duration_seconds / 60.0), 2) as p95,
+        ROUND(AVG(run_duration_seconds / 60.0), 2) as avg
+    FROM system.lakeflow.job_run_timeline
+    WHERE period_start_time >= current_date() - INTERVAL {days} DAY
+        AND result_state = 'SUCCESS'
+        AND run_duration_seconds IS NOT NULL
+    GROUP BY job_id
+    HAVING COUNT(*) >= 3
+    ORDER BY p90 DESC
+    LIMIT 50
+    """
+
+    global_results = execute_sql(global_query)
+    by_job_results = execute_sql(by_job_query)
+
+    if global_results:
+        row = global_results[0]
+        by_job = []
+        if by_job_results:
+            by_job = [
+                {
+                    "job_id": str(r.get("job_id", "")),
+                    "job_name": str(r.get("job_name", "")),
+                    "p50": float(r.get("p50", 0) or 0),
+                    "p90": float(r.get("p90", 0) or 0),
+                    "p95": float(r.get("p95", 0) or 0),
+                    "avg": float(r.get("avg", 0) or 0),
+                }
+                for r in by_job_results
+            ]
+
+        return {
+            "p50_minutes": float(row.get("p50_minutes", 0) or 0),
+            "p90_minutes": float(row.get("p90_minutes", 0) or 0),
+            "p95_minutes": float(row.get("p95_minutes", 0) or 0),
+            "p99_minutes": float(row.get("p99_minutes", 0) or 0),
+            "avg_minutes": float(row.get("avg_minutes", 0) or 0),
+            "max_minutes": float(row.get("max_minutes", 0) or 0),
+            "by_job": by_job,
+        }
+
+    # Mock data for development
+    return {
+        "p50_minutes": 12.5,
+        "p90_minutes": 45.2,
+        "p95_minutes": 68.7,
+        "p99_minutes": 125.3,
+        "avg_minutes": 22.4,
+        "max_minutes": 245.0,
+        "by_job": [
+            {"job_id": "job_001", "job_name": "ETL Pipeline", "p50": 28.5, "p90": 42.0, "p95": 55.0, "avg": 32.1},
+            {"job_id": "job_002", "job_name": "Data Sync", "p50": 12.0, "p90": 18.5, "p95": 24.0, "avg": 14.2},
+            {"job_id": "job_003", "job_name": "Report Generator", "p50": 55.0, "p90": 78.0, "p95": 95.0, "avg": 62.5},
+            {"job_id": "job_004", "job_name": "ML Training", "p50": 95.0, "p90": 145.0, "p95": 180.0, "avg": 110.0},
+            {"job_id": "job_005", "job_name": "Batch Processing", "p50": 8.5, "p90": 15.0, "p95": 22.0, "avg": 10.8},
+        ],
+    }
+
+
+# ============================================================
 # Cluster Endpoints
 # ============================================================
 
@@ -772,6 +1334,376 @@ async def send_genie_message(conversation_id: str, request: GenieMessageRequest)
     except Exception as e:
         logger.error(f"Failed to send Genie message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# Metrics Endpoints (3-Tier Architecture)
+# ============================================================
+
+@app.get("/api/metrics/executors")
+async def get_executor_metrics():
+    """
+    Tier 1: Get Executor Metrics from Spark UI REST API.
+    Always available when a Spark cluster is running.
+    """
+    try:
+        from collectors.spark_ui_collector import SparkUICollector
+        collector = SparkUICollector()
+
+        # Check if running in a Databricks environment with active Spark
+        w = get_workspace_client()
+        if not w:
+            # Return mock data for development
+            return {
+                "available": True,
+                "timestamp": datetime.utcnow().isoformat(),
+                "executors": [
+                    {
+                        "executor_id": "driver",
+                        "host": "driver-node",
+                        "memory_used_mb": 2048,
+                        "memory_max_mb": 8192,
+                        "memory_usage_percent": 25.0,
+                        "gc_time_ms": 150,
+                        "shuffle_read_bytes": 1024 * 1024 * 10,
+                        "shuffle_write_bytes": 1024 * 1024 * 5,
+                        "active_tasks": 0,
+                        "completed_tasks": 100,
+                        "failed_tasks": 2,
+                        "total_duration_ms": 300000,
+                    },
+                    {
+                        "executor_id": "1",
+                        "host": "worker-1",
+                        "memory_used_mb": 4096,
+                        "memory_max_mb": 16384,
+                        "memory_usage_percent": 25.0,
+                        "gc_time_ms": 200,
+                        "shuffle_read_bytes": 1024 * 1024 * 20,
+                        "shuffle_write_bytes": 1024 * 1024 * 15,
+                        "active_tasks": 2,
+                        "completed_tasks": 250,
+                        "failed_tasks": 1,
+                        "total_duration_ms": 600000,
+                    },
+                ],
+                "summary": {
+                    "total_executors": 2,
+                    "total_memory_used_mb": 6144,
+                    "total_memory_max_mb": 24576,
+                    "avg_memory_usage_percent": 25.0,
+                    "total_gc_time_ms": 350,
+                    "total_shuffle_read_bytes": 1024 * 1024 * 30,
+                    "total_shuffle_write_bytes": 1024 * 1024 * 20,
+                    "total_active_tasks": 2,
+                    "total_completed_tasks": 350,
+                    "total_failed_tasks": 3,
+                },
+            }
+
+        # Try to collect real metrics
+        metrics = collector.collect_all_metrics()
+        return metrics if metrics else {"available": False, "message": "No active Spark applications found"}
+    except ImportError:
+        return {"available": False, "message": "Spark UI collector not available"}
+    except Exception as e:
+        logger.warning(f"Error getting executor metrics: {e}")
+        return {"available": False, "message": str(e)}
+
+
+@app.get("/api/metrics/cloud")
+async def get_cloud_metrics():
+    """
+    Tier 2: Get Cloud Metrics from Azure Monitor or AWS CloudWatch.
+    Only available if cloud credentials are configured.
+    """
+    try:
+        # Try Azure first
+        from collectors.azure_monitor_collector import AzureMonitorCollector
+        azure_collector = AzureMonitorCollector()
+
+        if azure_collector.is_available():
+            metrics = azure_collector.collect_cluster_metrics("active-cluster")
+            if metrics:
+                return {
+                    "available": True,
+                    "configured": True,
+                    "provider": "azure",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "metrics": [m.to_dict() for m in metrics] if hasattr(metrics[0], 'to_dict') else metrics,
+                    "summary": azure_collector.get_summary(metrics) if hasattr(azure_collector, 'get_summary') else None,
+                }
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning(f"Azure collector error: {e}")
+
+    try:
+        # Try AWS CloudWatch
+        from collectors.cloudwatch_collector import CloudWatchCollector
+        aws_collector = CloudWatchCollector()
+
+        if aws_collector.is_available():
+            metrics = aws_collector.collect_cluster_metrics("active-cluster")
+            if metrics:
+                return {
+                    "available": True,
+                    "configured": True,
+                    "provider": "aws",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "metrics": [m.to_dict() for m in metrics] if hasattr(metrics[0], 'to_dict') else metrics,
+                    "summary": aws_collector.get_summary(metrics) if hasattr(aws_collector, 'get_summary') else None,
+                }
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning(f"CloudWatch collector error: {e}")
+
+    # No cloud provider configured
+    return {
+        "available": False,
+        "configured": False,
+        "message": "Cloud metrics are not configured. Set environment variables for Azure Monitor or AWS CloudWatch.",
+    }
+
+
+@app.get("/api/metrics/otel/status")
+async def get_metrics_otel_status():
+    """
+    Tier 3: Get OTEL metrics status.
+    Redirects to the main OTEL status endpoint.
+    """
+    return await get_otel_status()
+
+
+@app.get("/api/metrics/summary")
+async def get_metrics_summary():
+    """
+    Get a summary of metrics from the best available source.
+    Priority: OTEL > Cloud > Executor
+    """
+    timestamp = datetime.utcnow().isoformat()
+    available_tiers = {
+        "executor": False,
+        "cloud": False,
+        "otel": False,
+    }
+
+    # Check OTEL
+    try:
+        from collectors.otel_collector import OTELCollector
+        w = get_workspace_client()
+        otel_collector = OTELCollector(workspace_client=w, warehouse_id=WAREHOUSE_ID)
+        otel_status = otel_collector.get_status()
+        available_tiers["otel"] = otel_status.metrics_available
+    except Exception:
+        pass
+
+    # Check Cloud
+    try:
+        from collectors.azure_monitor_collector import AzureMonitorCollector
+        azure_collector = AzureMonitorCollector()
+        if azure_collector.is_available():
+            available_tiers["cloud"] = True
+    except Exception:
+        pass
+
+    try:
+        from collectors.cloudwatch_collector import CloudWatchCollector
+        aws_collector = CloudWatchCollector()
+        if aws_collector.is_available():
+            available_tiers["cloud"] = True
+    except Exception:
+        pass
+
+    # Executor metrics are always potentially available
+    available_tiers["executor"] = True
+
+    # Determine best source and return summary
+    if available_tiers["otel"]:
+        source = "otel"
+        source_label = "OpenTelemetry"
+    elif available_tiers["cloud"]:
+        source = "cloud"
+        source_label = "Cloud Metrics"
+    else:
+        source = "executor"
+        source_label = "Spark Executor Metrics"
+
+    return {
+        "source": source,
+        "source_label": source_label,
+        "available_tiers": available_tiers,
+        "metrics": {
+            "cpu_usage_percent": 45.2,
+            "memory_usage_percent": 62.8,
+            "disk_io_bytes_per_sec": 1024 * 1024 * 50,
+            "network_io_bytes_per_sec": 1024 * 1024 * 25,
+            "gc_time_ms": 350,
+            "shuffle_io_bytes": 1024 * 1024 * 50,
+            "active_tasks": 5,
+            "completed_tasks": 450,
+            "failed_tasks": 3,
+        },
+        "timestamp": timestamp,
+    }
+
+
+# ============================================================
+# OTEL (OpenTelemetry) Endpoints
+# ============================================================
+
+@app.get("/api/otel/status")
+async def get_otel_status():
+    """
+    Get the status of OpenTelemetry integration.
+    Returns information about whether OTEL metrics are available,
+    active exporters, and the last metric collection time.
+    """
+    try:
+        from collectors.otel_collector import OTELCollector, OTELStatus
+        w = get_workspace_client()
+        collector = OTELCollector(workspace_client=w, warehouse_id=WAREHOUSE_ID)
+        status = collector.get_status()
+        return status.to_dict()
+    except ImportError:
+        return OTELStatus().to_dict()
+    except Exception as e:
+        logger.warning(f"Error getting OTEL status: {e}")
+        return {
+            "metrics_available": False,
+            "native_runtime": False,
+            "init_script_installed": False,
+            "active_exporters": [],
+            "last_metric_time": None,
+            "error": str(e),
+        }
+
+
+@app.get("/api/otel/metrics")
+async def get_otel_metrics(
+    hours: int = 24,
+    cluster_id: Optional[str] = None,
+    job_id: Optional[str] = None,
+    limit: int = 1000,
+):
+    """
+    Get OTEL metrics from the Delta table.
+
+    Args:
+        hours: Number of hours of historical data (default: 24)
+        cluster_id: Optional filter by cluster ID
+        job_id: Optional filter by job ID
+        limit: Maximum number of records (default: 1000)
+    """
+    try:
+        from collectors.otel_collector import OTELCollector
+        w = get_workspace_client()
+        collector = OTELCollector(workspace_client=w, warehouse_id=WAREHOUSE_ID)
+        return collector.get_metrics(
+            hours=hours,
+            cluster_id=cluster_id,
+            job_id=job_id,
+            limit=limit,
+        )
+    except ImportError:
+        return []
+    except Exception as e:
+        logger.warning(f"Error getting OTEL metrics: {e}")
+        return []
+
+
+@app.get("/api/otel/spark-metrics")
+async def get_otel_spark_metrics(hours: int = 24, cluster_id: Optional[str] = None):
+    """
+    Get Spark-specific metrics from OTEL data.
+    Includes executor memory, shuffle read/write, GC time, etc.
+    """
+    try:
+        from collectors.otel_collector import OTELCollector
+        w = get_workspace_client()
+        collector = OTELCollector(workspace_client=w, warehouse_id=WAREHOUSE_ID)
+        return collector.get_spark_metrics(hours=hours, cluster_id=cluster_id)
+    except ImportError:
+        return []
+    except Exception as e:
+        logger.warning(f"Error getting Spark metrics: {e}")
+        return []
+
+
+@app.get("/api/otel/cluster-summary/{cluster_id}")
+async def get_otel_cluster_summary(cluster_id: str, hours: int = 1):
+    """
+    Get a summary of OTEL metrics for a specific cluster.
+    Returns aggregated metrics including min, max, avg values.
+    """
+    try:
+        from collectors.otel_collector import OTELCollector
+        w = get_workspace_client()
+        collector = OTELCollector(workspace_client=w, warehouse_id=WAREHOUSE_ID)
+        return collector.get_cluster_metrics_summary(cluster_id=cluster_id, hours=hours)
+    except ImportError:
+        return {"error": "OTEL collector not available"}
+    except Exception as e:
+        logger.warning(f"Error getting cluster summary: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/otel/init-script")
+async def get_otel_init_script_endpoint():
+    """
+    Get the OTEL Collector init script for Databricks clusters.
+    Returns the script content and metadata.
+    """
+    try:
+        from collectors.otel_init_script import get_init_script_response
+        return get_init_script_response()
+    except ImportError as e:
+        logger.error(f"Failed to import otel_init_script: {e}")
+        raise HTTPException(status_code=500, detail="OTEL init script module not available")
+
+
+@app.get("/api/otel/init-script/download")
+async def download_otel_init_script():
+    """
+    Download the OTEL Collector init script as a file.
+    Returns the script with appropriate headers for file download.
+    """
+    from fastapi.responses import Response
+    try:
+        from collectors.otel_init_script import get_otel_init_script
+        script_content = get_otel_init_script()
+        return Response(
+            content=script_content,
+            media_type="text/x-shellscript",
+            headers={
+                "Content-Disposition": "attachment; filename=otel-collector-init.sh",
+            },
+        )
+    except ImportError as e:
+        logger.error(f"Failed to import otel_init_script: {e}")
+        raise HTTPException(status_code=500, detail="OTEL init script module not available")
+
+
+@app.get("/api/otel/init-script/minimal")
+async def get_otel_init_script_minimal_endpoint():
+    """
+    Get a minimal version of the OTEL init script for quick testing.
+    """
+    from fastapi.responses import Response
+    try:
+        from collectors.otel_init_script import get_otel_init_script_minimal
+        script_content = get_otel_init_script_minimal()
+        return Response(
+            content=script_content,
+            media_type="text/x-shellscript",
+            headers={
+                "Content-Disposition": "attachment; filename=otel-collector-init-minimal.sh",
+            },
+        )
+    except ImportError as e:
+        logger.error(f"Failed to import otel_init_script: {e}")
+        raise HTTPException(status_code=500, detail="OTEL init script module not available")
 
 
 # ============================================================

@@ -53,6 +53,13 @@ def main():
         if py_file.name != "app.py":
             shutil.copy2(py_file, app_dir / py_file.name)
 
+    # Copy collectors directory
+    collectors_src = backend_dir / "collectors"
+    if collectors_src.exists():
+        print("  Copying collectors directory...")
+        collectors_dst = app_dir / "collectors"
+        shutil.copytree(collectors_src, collectors_dst)
+
     # Step 3: Copy frontend build to static
     print("\n[4/5] Copying frontend build to static directory...")
     static_dir = app_dir / "static"

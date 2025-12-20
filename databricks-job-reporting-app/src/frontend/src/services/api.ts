@@ -10,6 +10,11 @@ import type {
   Overlap,
   Anomaly,
   RetryStats,
+  MatrixData,
+  ExecutorMetricsResponse,
+  CloudMetricsResponse,
+  OtelMetricsResponse,
+  MetricsSummaryResponse,
 } from '../types';
 
 const api = axios.create({
@@ -48,6 +53,12 @@ export const getJobRunsByType = async (days: number = 7): Promise<Record<string,
 
 export const getDailyRuns = async (days: number = 30): Promise<any[]> => {
   const response = await api.get('/jobs/daily', { params: { days } });
+  return response.data;
+};
+
+// Matrix View endpoint
+export const getJobsMatrix = async (days: number = 7, runsPerJob: number = 20): Promise<MatrixData> => {
+  const response = await api.get('/jobs/matrix', { params: { days, runs_per_job: runsPerJob } });
   return response.data;
 };
 
@@ -155,6 +166,32 @@ export const generateReport = async (
     start_date: startDate,
     end_date: endDate,
   });
+  return response.data;
+};
+
+// Metrics endpoints - 3-Tier Architecture
+
+// Tier 1: Executor Metrics (Always Available)
+export const getExecutorMetrics = async (): Promise<ExecutorMetricsResponse> => {
+  const response = await api.get('/metrics/executors');
+  return response.data;
+};
+
+// Tier 2: Cloud Metrics (If Configured)
+export const getCloudMetrics = async (): Promise<CloudMetricsResponse> => {
+  const response = await api.get('/metrics/cloud');
+  return response.data;
+};
+
+// Tier 3: OTEL Metrics Status
+export const getOtelStatus = async (): Promise<OtelMetricsResponse> => {
+  const response = await api.get('/metrics/otel/status');
+  return response.data;
+};
+
+// Summary Metrics (Best Available)
+export const getMetricsSummary = async (): Promise<MetricsSummaryResponse> => {
+  const response = await api.get('/metrics/summary');
   return response.data;
 };
 

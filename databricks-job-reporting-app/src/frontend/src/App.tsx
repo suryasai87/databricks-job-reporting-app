@@ -33,6 +33,8 @@ import {
   Api as ApiIcon,
   Schedule as ScheduleIcon,
   BubbleChart as ClusterIcon,
+  GridView as GridViewIcon,
+  Speed as MetricsIcon,
 } from '@mui/icons-material';
 import type { User } from './types';
 import { getAuthStatus } from './services/api';
@@ -45,6 +47,8 @@ import Health from './pages/Health';
 import AIAssistant from './pages/AIAssistant';
 import Reports from './pages/Reports';
 import GanttView from './pages/GanttView';
+import MatrixView from './pages/MatrixView';
+import Metrics from './pages/Metrics';
 import ClusterAnalysis from './pages/ClusterAnalysis';
 import Settings from './pages/Settings';
 
@@ -55,6 +59,8 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
   { path: '/jobs', label: 'Jobs List', icon: <JobsIcon /> },
   { path: '/gantt', label: 'Gantt View', icon: <ScheduleIcon /> },
+  { path: '/matrix', label: 'Matrix View', icon: <GridViewIcon /> },
+  { path: '/metrics', label: 'Metrics', icon: <MetricsIcon /> },
   { path: '/costs', label: 'Cost Analytics', icon: <CostIcon /> },
   { path: '/health', label: 'Health & Anomalies', icon: <HealthIcon /> },
   { path: '/clusters', label: 'Cluster Analysis', icon: <ClusterIcon /> },
@@ -266,6 +272,8 @@ const App: React.FC = () => {
               <Route path="/" element={<Dashboard />} />
               <Route path="/jobs" element={<JobsList />} />
               <Route path="/gantt" element={<GanttView />} />
+              <Route path="/matrix" element={<MatrixView />} />
+              <Route path="/metrics" element={<Metrics />} />
               <Route path="/costs" element={<CostAnalytics />} />
               <Route path="/health" element={<Health />} />
               <Route path="/clusters" element={<ClusterAnalysis />} />
