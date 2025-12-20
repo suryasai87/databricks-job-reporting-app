@@ -47,8 +47,8 @@ app.add_middleware(
 )
 
 # Environment configuration
-DATABRICKS_HOST = os.getenv("DATABRICKS_HOST", "")
-WAREHOUSE_ID = os.getenv("WAREHOUSE_ID", "")
+DATABRICKS_HOST = os.getenv("DATABRICKS_HOST", "https://fe-vm-hls-amer.cloud.databricks.com")
+WAREHOUSE_ID = os.getenv("WAREHOUSE_ID", "4b28691c780d9875")
 GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "")
 
 

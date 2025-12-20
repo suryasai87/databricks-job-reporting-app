@@ -6,18 +6,14 @@ This project includes FULLY AUTOMATED deployment scripts.
 
 ### Quick Deploy (One Command!)
 
-Deploy to development:
 ```bash
+# Deploy to development
 python deploy.py dev
-```
 
-Deploy to staging:
-```bash
+# Deploy to staging
 python deploy.py staging
-```
 
-Deploy to production:
-```bash
+# Deploy to production
 python deploy.py prod
 ```
 
@@ -38,12 +34,46 @@ The deployment is FULLY AUTOMATED:
 - Node.js 18+ and npm installed
 - Python 3.9+
 
-### SSO Configuration
-The app automatically detects and uses the appropriate authentication method.
-Check authentication status at: `/api/auth/status`
+## Configuration
 
-### NO MANUAL STEPS REQUIRED!
-Everything is automated in the deployment script.
+### SQL Warehouse
+The app uses **Serverless Starter Warehouse** by default:
+- **Warehouse ID**: `4b28691c780d9875`
+
+To change, update in `src/backend/app.py`:
+```python
+WAREHOUSE_ID = os.getenv("WAREHOUSE_ID", "your-warehouse-id")
+```
+
+### Genie Space ID (AI Assistant)
+
+To enable the AI Assistant:
+
+1. **Create a Genie Space** in your Databricks workspace:
+   - Go to AI/BI > Genie Spaces
+   - Create a new space with these tables:
+     - `system.lakeflow.jobs`
+     - `system.lakeflow.job_run_timeline`
+     - `system.lakeflow.job_task_run_timeline`
+     - `system.billing.usage`
+     - `system.billing.list_prices`
+
+2. **Get the Genie Space ID** from the URL
+
+3. **Configure the app**:
+   - Option A: Update `src/backend/app.py`:
+     ```python
+     GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "your-genie-space-id")
+     ```
+   - Option B: Update in Databricks Apps UI:
+     - Go to Compute > Apps > databricks-jobs-monitor
+     - Settings > Environment Variables
+     - Add `GENIE_SPACE_ID` with your Genie Space ID
+
+4. **Redeploy the app**:
+   ```bash
+   python deploy.py dev
+   ```
 
 ## Project Structure
 
@@ -69,8 +99,10 @@ Everything is automated in the deployment script.
 - **AI Assistant**: Genie Spaces natural language queries
 - **Reports**: Generate comprehensive reports
 
-## Configuration
+## Environment Variables
 
-Set these in `databricks.yml` or environment:
-- `WAREHOUSE_ID`: SQL Warehouse for system table queries
-- `GENIE_SPACE_ID`: Genie Space for AI assistant
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABRICKS_HOST` | Workspace URL | `https://fe-vm-hls-amer.cloud.databricks.com` |
+| `WAREHOUSE_ID` | SQL Warehouse ID | `4b28691c780d9875` |
+| `GENIE_SPACE_ID` | Genie Space ID | `` (empty) |

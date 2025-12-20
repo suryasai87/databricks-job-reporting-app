@@ -2,56 +2,82 @@
 
 A comprehensive monitoring application for Databricks jobs with AI-powered insights using Genie Spaces. Inspired by Azure Data Factory's monitoring capabilities, adapted for Databricks environments.
 
+![Databricks Jobs Monitor](docs/screenshots/dashboard.png)
+
+## Live Demo
+
+**App URL:** https://databricks-jobs-monitor-1602460480284688.aws.databricksapps.com
+
 ## Features
 
 ### Dashboard Overview
 - Real-time job run statistics (total, succeeded, failed, running)
-- Success rate metrics
-- Daily run trends and cost analysis
+- Success rate metrics with visual indicators
+- Daily run trends with area charts
 - Job distribution by run type (JOB_RUN, SUBMIT_RUN, WORKFLOW_RUN)
+- Cost overview with DBU consumption
+
+![Dashboard](docs/screenshots/dashboard.png)
 
 ### Jobs List
 - Searchable and filterable job runs table
-- Pagination and sorting
-- Status indicators with color coding
+- Pagination and multi-column sorting
+- Status indicators with color coding (SUCCESS, FAILED, RUNNING)
 - Duration tracking and cost attribution
+- Filter by status, run type, and time range
+
+![Jobs List](docs/screenshots/jobs-list.png)
 
 ### Gantt View
 - Visual timeline of job execution
 - Overlap detection and highlighting
-- Concurrent jobs analysis
+- Concurrent jobs analysis chart
 - Time range selection (6h, 12h, 24h, 48h)
+- Interactive zoom controls
+
+![Gantt View](docs/screenshots/gantt-view.png)
 
 ### Cost Analytics
-- Total cost and DBU consumption
-- Daily cost trends
-- Top expensive jobs ranking
-- Cost breakdown by identity/user
+- Total cost and DBU consumption metrics
+- Daily cost trends with bar charts
+- Top 10 most expensive jobs ranking
+- Cost breakdown by identity/user (pie chart)
+- Customizable time range (7-90 days)
+
+![Cost Analytics](docs/screenshots/cost-analytics.png)
 
 ### Health & Anomalies
 - **Failed Jobs**: Jobs with failure history and success rates
 - **Prolonged Jobs**: Currently running jobs exceeding thresholds
-- **Anomaly Detection**: Z-score based detection of unusual execution patterns
+- **Anomaly Detection**: Z-score based detection of unusual patterns
 - **Retry Statistics**: Jobs with high retry rates
+
+![Health & Anomalies](docs/screenshots/health.png)
 
 ### Cluster Analysis
 - Cluster configuration overview
-- Node type distribution
+- Node type distribution (driver/worker)
 - DBR version tracking
-- Resource utilization insights
+- Autoscaling vs fixed cluster analysis
+
+![Cluster Analysis](docs/screenshots/cluster-analysis.png)
 
 ### AI Assistant (Genie Spaces)
 - Natural language queries about job data
 - Suggested questions for common analysis
-- Conversation history
-- Markdown-formatted responses with SQL queries
+- Conversation history with markdown support
+- SQL query responses with formatted tables
+
+![AI Assistant](docs/screenshots/ai-assistant.png)
 
 ### Reports
-- Performance reports
+- Performance reports generation
 - Cost analysis reports
 - Health & anomaly reports
 - Executive summaries
-- Scheduled report configuration
+- Configurable date ranges
+
+![Reports](docs/screenshots/reports.png)
 
 ## Tech Stack
 
@@ -106,19 +132,26 @@ The deployment script automatically:
    pip install -r requirements.txt
    ```
 
-3. **Run backend (Terminal 1):**
+3. **Set environment variables:**
+   ```bash
+   export DATABRICKS_HOST="https://your-workspace.cloud.databricks.com"
+   export WAREHOUSE_ID="your-warehouse-id"
+   export GENIE_SPACE_ID="your-genie-space-id"  # Optional
+   ```
+
+4. **Run backend (Terminal 1):**
    ```bash
    cd src/backend
    uvicorn app:app --reload --port 8000
    ```
 
-4. **Run frontend (Terminal 2):**
+5. **Run frontend (Terminal 2):**
    ```bash
    cd src/frontend
    npm run dev
    ```
 
-5. **Access the app:**
+6. **Access the app:**
    - Frontend: http://localhost:5173
    - API Docs: http://localhost:8000/docs
 
@@ -126,31 +159,117 @@ The deployment script automatically:
 
 ### Environment Variables
 
-Set these in your environment or in `app.yaml`:
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABRICKS_HOST` | Databricks workspace URL | `https://fe-vm-hls-amer.cloud.databricks.com` |
+| `WAREHOUSE_ID` | SQL Warehouse ID for queries | `4b28691c780d9875` |
+| `GENIE_SPACE_ID` | Genie Space ID for AI Assistant | `` (empty) |
 
-| Variable | Description |
-|----------|-------------|
-| `DATABRICKS_HOST` | Databricks workspace URL |
-| `WAREHOUSE_ID` | SQL Warehouse ID for queries |
-| `GENIE_SPACE_ID` | Genie Space ID for AI Assistant |
+### Configuring the SQL Warehouse
 
-### databricks.yml
+The app uses Databricks SQL Warehouse to query system tables. The default configuration uses:
+- **Warehouse ID**: `4b28691c780d9875` (Serverless Starter Warehouse)
 
-The main bundle configuration is in `databricks.yml`:
+To change the warehouse:
 
-```yaml
-bundle:
-  name: databricks-jobs-monitor
+1. **In code** - Update `src/backend/app.py`:
+   ```python
+   WAREHOUSE_ID = os.getenv("WAREHOUSE_ID", "your-warehouse-id")
+   ```
 
-workspace:
-  host: https://your-workspace.cloud.databricks.com
+2. **In deployment** - Update `build.py` app.yaml section:
+   ```yaml
+   env:
+     - name: WAREHOUSE_ID
+       value: "your-warehouse-id"
+   ```
 
-variables:
-  warehouse_id:
-    description: SQL Warehouse ID for system table queries
-  genie_space_id:
-    description: Genie Space ID for AI Assistant
-```
+3. **In Databricks Apps UI**:
+   - Go to your app settings
+   - Add/update the `WAREHOUSE_ID` environment variable
+
+## Setting Up AI Assistant (Genie Spaces)
+
+The AI Assistant feature uses Databricks Genie Spaces to enable natural language queries about your job data.
+
+### Step 1: Create a Genie Space
+
+1. Navigate to your Databricks workspace
+2. Go to **AI/BI** > **Genie Spaces**
+3. Click **Create Genie Space**
+4. Configure the Genie Space:
+   - **Name**: "Jobs Monitor Assistant" (or your preferred name)
+   - **Description**: "AI assistant for Databricks jobs monitoring"
+   - **SQL Warehouse**: Select your SQL warehouse
+   - **Tables**: Add the following system tables:
+     - `system.lakeflow.jobs`
+     - `system.lakeflow.job_run_timeline`
+     - `system.lakeflow.job_task_run_timeline`
+     - `system.billing.usage`
+     - `system.billing.list_prices`
+
+5. Add sample instructions for the Genie:
+   ```
+   You are an AI assistant that helps users analyze Databricks job execution data.
+   You can answer questions about:
+   - Job run statistics and success rates
+   - Cost analysis and DBU consumption
+   - Failed jobs and error patterns
+   - Long-running jobs and anomalies
+   - Job scheduling and overlaps
+   ```
+
+6. Click **Save** and note the **Genie Space ID** from the URL
+
+### Step 2: Configure the App with Genie Space ID
+
+#### Option A: Update in Code (Recommended for Development)
+
+1. Edit `src/backend/app.py`:
+   ```python
+   GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "your-genie-space-id")
+   ```
+
+2. Edit `build.py` to update app.yaml:
+   ```python
+   app_yaml_content = """...
+   env:
+     - name: GENIE_SPACE_ID
+       value: "your-genie-space-id"
+   """
+   ```
+
+3. Rebuild and redeploy:
+   ```bash
+   python deploy.py dev
+   ```
+
+#### Option B: Configure in Databricks Apps UI (Recommended for Production)
+
+1. Navigate to your Databricks workspace
+2. Go to **Compute** > **Apps**
+3. Click on **databricks-jobs-monitor**
+4. Go to **Settings** > **Environment Variables**
+5. Add or update:
+   - **Name**: `GENIE_SPACE_ID`
+   - **Value**: `your-genie-space-id`
+6. Click **Save** and redeploy the app
+
+### Step 3: Verify Genie Space Integration
+
+1. Open the app and navigate to **AI Assistant**
+2. Select your Genie Space from the dropdown
+3. Try asking a question like:
+   - "What are the top 5 most expensive jobs?"
+   - "Show me failed jobs from the last 7 days"
+   - "What is the success rate by job type?"
+
+### Genie Space Permissions
+
+Ensure the Genie Space has access to:
+- System tables (`system.lakeflow.*`, `system.billing.*`)
+- The SQL Warehouse specified in your configuration
+- Users who will be using the AI Assistant
 
 ## Project Structure
 
@@ -162,6 +281,8 @@ databricks-job-reporting-app/
 ├── requirements.txt         # Python dependencies
 ├── resources/
 │   └── app.yml             # Databricks app resource
+├── docs/
+│   └── screenshots/        # App screenshots
 ├── src/
 │   ├── frontend/           # React application
 │   │   ├── src/
@@ -182,15 +303,15 @@ databricks-job-reporting-app/
 
 | Table | Purpose |
 |-------|---------|
-| `system.lakeflow.jobs` | Job definitions |
-| `system.lakeflow.job_run_timeline` | Job run history |
-| `system.lakeflow.job_task_run_timeline` | Task-level details |
-| `system.billing.usage` | Cost and DBU data |
-| `system.billing.list_prices` | Pricing information |
+| `system.lakeflow.jobs` | Job definitions and metadata |
+| `system.lakeflow.job_run_timeline` | Job run history and execution details |
+| `system.lakeflow.job_task_run_timeline` | Task-level execution details |
+| `system.billing.usage` | Cost and DBU consumption data |
+| `system.billing.list_prices` | Pricing information for cost calculations |
 
 ## Authentication
 
-The app supports multiple authentication methods:
+The app supports multiple Databricks SSO authentication methods:
 
 1. **OBO (On-Behalf-Of)**: Via `x-forwarded-email` header
 2. **U2M OAuth**: Via `x-forwarded-access-token` header
@@ -222,12 +343,12 @@ Check authentication status at `/api/auth/status`.
 ### Analysis
 - `GET /api/clusters/configs` - Cluster configurations
 - `GET /api/analysis/overlaps` - Job overlaps
-- `GET /api/analysis/concurrent` - Concurrent jobs
+- `GET /api/analysis/concurrent` - Concurrent jobs over time
 
-### AI Assistant
-- `GET /api/genie/spaces` - List Genie Spaces
-- `POST /api/genie/conversations` - Start conversation
-- `POST /api/genie/conversations/{id}/messages` - Send message
+### AI Assistant (Genie)
+- `GET /api/genie/spaces` - List available Genie Spaces
+- `POST /api/genie/conversations` - Start a new conversation
+- `POST /api/genie/conversations/{id}/messages` - Send message and get response
 
 ## Troubleshooting
 
@@ -240,9 +361,34 @@ Check authentication status at `/api/auth/status`.
 - Check bundle validation: `databricks bundle validate -t dev`
 
 ### Data Issues
-- Ensure access to system tables
+- Ensure access to system tables (requires Unity Catalog)
 - Verify SQL Warehouse is running
 - Check WAREHOUSE_ID configuration
+
+### AI Assistant Issues
+- Verify Genie Space ID is correctly configured
+- Ensure Genie Space has access to required tables
+- Check that the SQL Warehouse is running
+
+## Screenshots
+
+To take screenshots of the app:
+
+1. Open the app URL in your browser
+2. Navigate to each tab
+3. Use your OS screenshot tool or browser dev tools
+4. Save screenshots to `docs/screenshots/`
+
+Screenshot naming convention:
+- `dashboard.png`
+- `jobs-list.png`
+- `gantt-view.png`
+- `cost-analytics.png`
+- `health.png`
+- `cluster-analysis.png`
+- `ai-assistant.png`
+- `reports.png`
+- `settings.png`
 
 ## License
 
