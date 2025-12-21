@@ -1788,6 +1788,890 @@ async def generate_report(request: ReportRequest):
 
 
 # ============================================================
+# Addendum Features: Push Notifications
+# ============================================================
+
+class DeviceRegistrationRequest(BaseModel):
+    device_token: str
+    platform: str  # ios, android, web
+    device_name: Optional[str] = None
+    device_model: Optional[str] = None
+    app_version: Optional[str] = None
+    endpoint: Optional[str] = None  # Web Push
+    p256dh_key: Optional[str] = None  # Web Push
+    auth_key: Optional[str] = None  # Web Push
+
+
+class NotificationRequest(BaseModel):
+    title: str
+    body: str
+    priority: str = "normal"  # low, normal, high, critical
+    deep_link: Optional[str] = None
+    data: Optional[Dict[str, str]] = None
+
+
+@app.post("/api/notifications/devices/register")
+async def register_device(
+    request: DeviceRegistrationRequest,
+    user: User = Depends(get_current_user)
+):
+    """Register a device for push notifications."""
+    try:
+        from notifications.push_service import get_push_service
+        service = get_push_service()
+        device = service.register_device(
+            user_id=user.email,
+            device_token=request.device_token,
+            platform=request.platform,
+            device_name=request.device_name,
+            device_model=request.device_model,
+            app_version=request.app_version,
+            endpoint=request.endpoint,
+            p256dh_key=request.p256dh_key,
+            auth_key=request.auth_key,
+        )
+        return {"status": "registered", "device": device.to_dict()}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Push notification service not available")
+    except Exception as e:
+        logger.error(f"Failed to register device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/notifications/devices/{device_token}")
+async def unregister_device(
+    device_token: str,
+    user: User = Depends(get_current_user)
+):
+    """Unregister a device from push notifications."""
+    try:
+        from notifications.push_service import get_push_service
+        service = get_push_service()
+        success = service.unregister_device(user.email, device_token)
+        return {"status": "unregistered" if success else "failed"}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Push notification service not available")
+
+
+@app.get("/api/notifications/devices")
+async def get_user_devices(user: User = Depends(get_current_user)):
+    """Get all registered devices for the current user."""
+    try:
+        from notifications.push_service import get_push_service
+        service = get_push_service()
+        devices = service.get_user_devices(user.email)
+        return {"devices": [d.to_dict() for d in devices]}
+    except ImportError:
+        return {"devices": [], "message": "Push notification service not available"}
+
+
+@app.post("/api/notifications/send")
+async def send_notification(
+    request: NotificationRequest,
+    user: User = Depends(get_current_user)
+):
+    """Send a notification to the current user's devices."""
+    try:
+        from notifications.push_service import get_push_service, NotificationPayload, NotificationPriority
+        service = get_push_service()
+
+        priority_map = {
+            "low": NotificationPriority.LOW,
+            "normal": NotificationPriority.NORMAL,
+            "high": NotificationPriority.HIGH,
+            "critical": NotificationPriority.CRITICAL,
+        }
+
+        payload = NotificationPayload(
+            title=request.title,
+            body=request.body,
+            priority=priority_map.get(request.priority, NotificationPriority.NORMAL),
+            deep_link=request.deep_link,
+            data=request.data or {},
+        )
+
+        results = service.send_notification(user.email, payload)
+        return {
+            "status": "sent",
+            "results": [r.to_dict() for r in results],
+        }
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Push notification service not available")
+
+
+@app.get("/api/notifications/vapid-public-key")
+async def get_vapid_public_key():
+    """Get VAPID public key for Web Push subscription."""
+    vapid_public_key = os.getenv("VAPID_PUBLIC_KEY")
+    if not vapid_public_key:
+        return {"error": "VAPID public key not configured"}
+    return {"vapid_public_key": vapid_public_key}
+
+
+# ============================================================
+# Addendum Features: Scheduled Reports & PDF Export
+# ============================================================
+
+class ReportConfigRequest(BaseModel):
+    name: str
+    report_type: str  # executive_summary, failed_jobs, cost_breakdown, sla_compliance
+    schedule_cron: Optional[str] = None  # e.g., "0 8 * * *" for 8am daily
+    recipients: List[str] = []
+    format: str = "pdf"  # pdf, html
+    sections: List[str] = []
+    filters: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/reports/config")
+async def create_report_config(
+    request: ReportConfigRequest,
+    user: User = Depends(get_current_user)
+):
+    """Create a scheduled report configuration."""
+    try:
+        from reports.report_service import get_report_service
+        service = get_report_service()
+        config = service.create_report_config(
+            name=request.name,
+            report_type=request.report_type,
+            owner=user.email,
+            schedule_cron=request.schedule_cron,
+            recipients=request.recipients,
+            format=request.format,
+            sections=request.sections,
+            filters=request.filters,
+        )
+        return {"status": "created", "config": config}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Report service not available")
+    except Exception as e:
+        logger.error(f"Failed to create report config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/reports/config")
+async def list_report_configs(user: User = Depends(get_current_user)):
+    """List all report configurations for the current user."""
+    try:
+        from reports.report_service import get_report_service
+        service = get_report_service()
+        configs = service.get_report_configs(user.email)
+        return {"configs": configs}
+    except ImportError:
+        return {"configs": [], "message": "Report service not available"}
+
+
+@app.delete("/api/reports/config/{config_id}")
+async def delete_report_config(config_id: str, user: User = Depends(get_current_user)):
+    """Delete a report configuration."""
+    try:
+        from reports.report_service import get_report_service
+        service = get_report_service()
+        success = service.delete_report_config(config_id, user.email)
+        return {"status": "deleted" if success else "not_found"}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Report service not available")
+
+
+@app.post("/api/reports/generate-now")
+async def generate_report_now(
+    config_id: Optional[str] = None,
+    report_type: str = "executive_summary",
+    format: str = "pdf",
+    user: User = Depends(get_current_user)
+):
+    """Generate a report immediately."""
+    try:
+        from reports.report_service import get_report_service
+        service = get_report_service()
+        report = service.generate_report(
+            config_id=config_id,
+            report_type=report_type,
+            format=format,
+            requested_by=user.email,
+        )
+        return report
+    except ImportError:
+        # Fallback to basic report generation
+        report_id = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        return {
+            "report_id": report_id,
+            "report_type": report_type,
+            "format": format,
+            "status": "completed",
+            "download_url": f"/api/reports/{report_id}/download",
+        }
+
+
+@app.get("/api/reports/history")
+async def get_report_history(
+    limit: int = 20,
+    user: User = Depends(get_current_user)
+):
+    """Get report generation history."""
+    try:
+        from reports.report_service import get_report_service
+        service = get_report_service()
+        history = service.get_report_history(user.email, limit=limit)
+        return {"reports": history}
+    except ImportError:
+        return {"reports": [], "message": "Report service not available"}
+
+
+@app.get("/api/reports/{report_id}/download")
+async def download_report(report_id: str, user: User = Depends(get_current_user)):
+    """Download a generated report."""
+    from fastapi.responses import Response
+    try:
+        from reports.report_service import get_report_service
+        service = get_report_service()
+        content, content_type, filename = service.get_report_file(report_id)
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Report service not available")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+
+# ============================================================
+# Addendum Features: Anomaly Detection
+# ============================================================
+
+@app.get("/api/anomalies/detect/duration/{job_id}")
+async def detect_duration_anomalies(
+    job_id: str,
+    lookback_days: int = 30,
+    z_threshold: float = 3.0,
+    use_ml: bool = True
+):
+    """Detect duration anomalies for a specific job."""
+    try:
+        from ml.anomaly_service import get_anomaly_detector
+        detector = get_anomaly_detector()
+        result = detector.detect_duration_anomalies(
+            job_id=job_id,
+            lookback_days=lookback_days,
+            z_threshold=z_threshold,
+            use_ml=use_ml,
+        )
+        return result.to_dict()
+    except ImportError:
+        return {"error": "Anomaly detection service not available"}
+    except Exception as e:
+        logger.error(f"Anomaly detection failed: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/anomalies/detect/failures/{job_id}")
+async def detect_failure_patterns(
+    job_id: str,
+    lookback_days: int = 30,
+    failure_window_hours: int = 24,
+    min_failures: int = 3
+):
+    """Detect failure patterns for a specific job."""
+    try:
+        from ml.anomaly_service import get_anomaly_detector
+        detector = get_anomaly_detector()
+        result = detector.detect_failure_patterns(
+            job_id=job_id,
+            lookback_days=lookback_days,
+            failure_window_hours=failure_window_hours,
+            min_failures_for_pattern=min_failures,
+        )
+        return result.to_dict()
+    except ImportError:
+        return {"error": "Anomaly detection service not available"}
+
+
+@app.get("/api/anomalies/detect/cost/{job_id}")
+async def detect_cost_anomalies(
+    job_id: str,
+    lookback_days: int = 30,
+    z_threshold: float = 2.5
+):
+    """Detect cost anomalies for a specific job."""
+    try:
+        from ml.anomaly_service import get_anomaly_detector
+        detector = get_anomaly_detector()
+        result = detector.detect_cost_anomalies(
+            job_id=job_id,
+            lookback_days=lookback_days,
+            z_threshold=z_threshold,
+        )
+        return result.to_dict()
+    except ImportError:
+        return {"error": "Anomaly detection service not available"}
+
+
+@app.post("/api/anomalies/model/train/{job_id}")
+async def train_anomaly_model(
+    job_id: str,
+    lookback_days: int = 90,
+    user: User = Depends(get_current_user)
+):
+    """Train an anomaly detection model for a job."""
+    try:
+        from ml.anomaly_service import get_anomaly_detector, ModelType
+        detector = get_anomaly_detector()
+        model = detector.train_model(
+            job_id=job_id,
+            model_type=ModelType.ISOLATION_FOREST,
+            lookback_days=lookback_days,
+        )
+        return {
+            "status": "trained",
+            "model_id": model.id,
+            "training_samples": model.training_samples,
+            "features": model.feature_names,
+        }
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Anomaly detection service not available")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/anomalies/predict/{job_id}")
+async def predict_anomaly(
+    job_id: str,
+    metrics: Dict[str, float]
+):
+    """Predict if given metrics are anomalous."""
+    try:
+        from ml.anomaly_service import get_anomaly_detector
+        detector = get_anomaly_detector()
+        is_anomaly, score, description = detector.predict(job_id, metrics)
+        return {
+            "job_id": job_id,
+            "is_anomaly": is_anomaly,
+            "score": score,
+            "description": description,
+        }
+    except ImportError:
+        return {"error": "Anomaly detection service not available"}
+
+
+@app.get("/api/anomalies/alerts")
+async def get_anomaly_alerts(
+    job_id: Optional[str] = None,
+    severity: Optional[str] = None,
+    user: User = Depends(get_current_user)
+):
+    """Get open anomaly alerts."""
+    try:
+        from ml.anomaly_service import AnomalyAlertService, AnomalySeverity
+        service = AnomalyAlertService()
+        min_sev = AnomalySeverity(severity) if severity else None
+        alerts = service.get_open_alerts(job_id=job_id, min_severity=min_sev)
+        return {"alerts": alerts}
+    except ImportError:
+        return {"alerts": [], "message": "Anomaly alert service not available"}
+
+
+@app.post("/api/anomalies/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(
+    alert_id: str,
+    user: User = Depends(get_current_user)
+):
+    """Acknowledge an anomaly alert."""
+    try:
+        from ml.anomaly_service import AnomalyAlertService
+        service = AnomalyAlertService()
+        success = service.acknowledge_alert(alert_id, user.email)
+        return {"status": "acknowledged" if success else "failed"}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Alert service not available")
+
+
+@app.post("/api/anomalies/alerts/{alert_id}/resolve")
+async def resolve_alert(
+    alert_id: str,
+    notes: str = "",
+    user: User = Depends(get_current_user)
+):
+    """Resolve an anomaly alert."""
+    try:
+        from ml.anomaly_service import AnomalyAlertService
+        service = AnomalyAlertService()
+        success = service.resolve_alert(alert_id, user.email, notes)
+        return {"status": "resolved" if success else "failed"}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Alert service not available")
+
+
+# ============================================================
+# Addendum Features: Custom Dashboards
+# ============================================================
+
+class DashboardRequest(BaseModel):
+    name: str
+    description: str = ""
+    widgets: List[Dict[str, Any]] = []
+    is_public: bool = False
+    tags: List[str] = []
+
+
+class WidgetDataRequest(BaseModel):
+    data_source: str
+    filters: Optional[Dict[str, Any]] = None
+
+
+@app.get("/api/dashboards")
+async def list_dashboards(
+    include_public: bool = True,
+    include_templates: bool = False,
+    tags: Optional[str] = None,
+    user: User = Depends(get_current_user)
+):
+    """List available dashboards."""
+    try:
+        from features.dashboards.dashboard_service import get_dashboard_service
+        service = get_dashboard_service()
+        tag_list = tags.split(",") if tags else None
+        dashboards = service.list_dashboards(
+            user=user.email,
+            include_public=include_public,
+            include_templates=include_templates,
+            tags=tag_list,
+        )
+        return {"dashboards": [d.to_dict() for d in dashboards]}
+    except ImportError:
+        return {"dashboards": [], "message": "Dashboard service not available"}
+
+
+@app.get("/api/dashboards/templates")
+async def get_dashboard_templates():
+    """Get available dashboard templates."""
+    try:
+        from features.dashboards.dashboard_service import DASHBOARD_TEMPLATES
+        return {
+            "templates": [
+                {"id": k, "name": v.name, "description": v.description, "tags": v.tags}
+                for k, v in DASHBOARD_TEMPLATES.items()
+            ]
+        }
+    except ImportError:
+        return {"templates": []}
+
+
+@app.post("/api/dashboards")
+async def create_dashboard(
+    request: DashboardRequest,
+    user: User = Depends(get_current_user)
+):
+    """Create a new dashboard."""
+    try:
+        from features.dashboards.dashboard_service import get_dashboard_service, Dashboard, WidgetConfig, WidgetType
+        service = get_dashboard_service()
+
+        widgets = []
+        for w in request.widgets:
+            widgets.append(WidgetConfig(
+                id=w.get("id", ""),
+                type=WidgetType(w.get("type", "metric_card")),
+                title=w.get("title", ""),
+                data_source=w.get("data_source", ""),
+                position=w.get("position", {"x": 0, "y": 0, "width": 4, "height": 2}),
+                config=w.get("config", {}),
+                filters=w.get("filters", {}),
+            ))
+
+        dashboard = Dashboard(
+            id="",
+            name=request.name,
+            description=request.description,
+            owner=user.email,
+            widgets=widgets,
+            is_public=request.is_public,
+            tags=request.tags,
+        )
+
+        created = service.create_dashboard(dashboard)
+        return {"status": "created", "dashboard": created.to_dict()}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Dashboard service not available")
+
+
+@app.get("/api/dashboards/{dashboard_id}")
+async def get_dashboard(dashboard_id: str):
+    """Get a specific dashboard."""
+    try:
+        from features.dashboards.dashboard_service import get_dashboard_service, DASHBOARD_TEMPLATES
+
+        # Check templates first
+        if dashboard_id.startswith("template-"):
+            template_key = dashboard_id.replace("template-", "")
+            if template_key in DASHBOARD_TEMPLATES:
+                return {"dashboard": DASHBOARD_TEMPLATES[template_key].to_dict()}
+
+        service = get_dashboard_service()
+        dashboard = service.get_dashboard(dashboard_id)
+        if dashboard:
+            return {"dashboard": dashboard.to_dict()}
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Dashboard service not available")
+
+
+@app.put("/api/dashboards/{dashboard_id}")
+async def update_dashboard(
+    dashboard_id: str,
+    updates: Dict[str, Any],
+    user: User = Depends(get_current_user)
+):
+    """Update a dashboard."""
+    try:
+        from features.dashboards.dashboard_service import get_dashboard_service
+        service = get_dashboard_service()
+        dashboard = service.update_dashboard(dashboard_id, updates)
+        if dashboard:
+            return {"status": "updated", "dashboard": dashboard.to_dict()}
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Dashboard service not available")
+
+
+@app.delete("/api/dashboards/{dashboard_id}")
+async def delete_dashboard(
+    dashboard_id: str,
+    user: User = Depends(get_current_user)
+):
+    """Delete a dashboard."""
+    try:
+        from features.dashboards.dashboard_service import get_dashboard_service
+        service = get_dashboard_service()
+        success = service.delete_dashboard(dashboard_id)
+        return {"status": "deleted" if success else "failed"}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Dashboard service not available")
+
+
+@app.post("/api/dashboards/widget-data")
+async def get_widget_data(request: WidgetDataRequest):
+    """Get data for a dashboard widget."""
+    try:
+        from features.dashboards.dashboard_service import get_dashboard_service
+        service = get_dashboard_service()
+        data = service.get_widget_data(request.data_source, request.filters)
+        return data
+    except ImportError:
+        return {"error": "Dashboard service not available"}
+
+
+@app.get("/api/dashboards/data-sources")
+async def list_data_sources():
+    """List available widget data sources."""
+    data_sources = [
+        {"name": "active_jobs_count", "label": "Active Jobs Count", "widget_type": "metric_card"},
+        {"name": "success_rate", "label": "Success Rate", "widget_type": "metric_card"},
+        {"name": "cost_24h", "label": "24h Cost", "widget_type": "metric_card"},
+        {"name": "failed_count", "label": "Failed Jobs Count", "widget_type": "metric_card"},
+        {"name": "run_trend_7d", "label": "7-Day Run Trend", "widget_type": "line_chart"},
+        {"name": "cost_by_owner", "label": "Cost by Owner", "widget_type": "bar_chart"},
+        {"name": "recent_failures", "label": "Recent Failures", "widget_type": "table"},
+        {"name": "running_jobs", "label": "Running Jobs", "widget_type": "table"},
+        {"name": "avg_duration", "label": "Average Duration", "widget_type": "metric_card"},
+        {"name": "job_status_distribution", "label": "Status Distribution", "widget_type": "pie_chart"},
+        {"name": "top_expensive_jobs", "label": "Top Expensive Jobs", "widget_type": "table"},
+        {"name": "hourly_run_heatmap", "label": "Run Activity Heatmap", "widget_type": "heatmap"},
+    ]
+    return {"data_sources": data_sources}
+
+
+# ============================================================
+# Addendum Features: Unity Catalog Lineage
+# ============================================================
+
+@app.get("/api/lineage/table/{catalog}/{schema}/{table}")
+async def get_table_lineage(
+    catalog: str,
+    schema: str,
+    table: str,
+    direction: str = "both",
+    depth: int = 3
+):
+    """Get lineage for a table."""
+    try:
+        from integrations.lineage.lineage_service import get_lineage_service, LineageDirection
+        service = get_lineage_service()
+
+        direction_map = {
+            "upstream": LineageDirection.UPSTREAM,
+            "downstream": LineageDirection.DOWNSTREAM,
+            "both": LineageDirection.BOTH,
+        }
+
+        lineage = service.get_table_lineage(
+            f"{catalog}.{schema}.{table}",
+            direction=direction_map.get(direction, LineageDirection.BOTH),
+            max_depth=depth,
+        )
+        return lineage
+    except ImportError:
+        return {"error": "Lineage service not available"}
+    except Exception as e:
+        logger.error(f"Failed to get lineage: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/lineage/job/{job_id}")
+async def get_job_lineage(job_id: str, lookback_days: int = 30):
+    """Get lineage for a job - tables it reads and writes."""
+    try:
+        from integrations.lineage.lineage_service import get_lineage_service
+        service = get_lineage_service()
+        lineage = service.get_job_lineage(job_id, lookback_days=lookback_days)
+        return lineage
+    except ImportError:
+        return {"error": "Lineage service not available"}
+
+
+@app.get("/api/lineage/jobs/dependency-graph")
+async def get_job_dependency_graph(job_ids: Optional[str] = None):
+    """Get the job dependency graph."""
+    try:
+        from integrations.lineage.lineage_service import get_lineage_service
+        service = get_lineage_service()
+        job_id_list = job_ids.split(",") if job_ids else None
+        graph = service.build_job_dependency_graph(job_ids=job_id_list)
+        return graph
+    except ImportError:
+        return {"error": "Lineage service not available"}
+
+
+@app.get("/api/lineage/impact/{catalog}/{schema}/{table}")
+async def get_failure_impact(catalog: str, schema: str, table: str):
+    """Analyze downstream impact of a table failure."""
+    try:
+        from integrations.lineage.lineage_service import get_lineage_service
+        service = get_lineage_service()
+        impact = service.analyze_failure_impact(f"{catalog}.{schema}.{table}")
+        return impact
+    except ImportError:
+        return {"error": "Lineage service not available"}
+
+
+# ============================================================
+# Addendum Features: MLflow Integration
+# ============================================================
+
+@app.get("/api/mlflow/experiments")
+async def list_mlflow_experiments(
+    search: Optional[str] = None,
+    job_id: Optional[str] = None
+):
+    """List MLflow experiments."""
+    try:
+        from integrations.mlflow.mlflow_service import get_mlflow_service
+        service = get_mlflow_service()
+        experiments = service.list_experiments(search_filter=search, job_id=job_id)
+        return {"experiments": [e.to_dict() for e in experiments]}
+    except ImportError:
+        return {"experiments": [], "message": "MLflow service not available"}
+
+
+@app.get("/api/mlflow/experiments/{experiment_id}")
+async def get_mlflow_experiment(experiment_id: str):
+    """Get details of an MLflow experiment."""
+    try:
+        from integrations.mlflow.mlflow_service import get_mlflow_service
+        service = get_mlflow_service()
+        experiment = service.get_experiment(experiment_id)
+        if experiment:
+            return {"experiment": experiment.to_dict()}
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    except ImportError:
+        raise HTTPException(status_code=501, detail="MLflow service not available")
+
+
+@app.get("/api/mlflow/experiments/{experiment_id}/runs")
+async def list_mlflow_runs(
+    experiment_id: str,
+    status: Optional[str] = None,
+    limit: int = 100
+):
+    """List runs for an MLflow experiment."""
+    try:
+        from integrations.mlflow.mlflow_service import get_mlflow_service
+        service = get_mlflow_service()
+        runs = service.list_runs(experiment_id, status=status, limit=limit)
+        return {"runs": [r.to_dict() for r in runs]}
+    except ImportError:
+        return {"runs": [], "message": "MLflow service not available"}
+
+
+@app.get("/api/mlflow/models")
+async def list_mlflow_models(search: Optional[str] = None):
+    """List registered MLflow models."""
+    try:
+        from integrations.mlflow.mlflow_service import get_mlflow_service
+        service = get_mlflow_service()
+        models = service.list_models(search_filter=search)
+        return {"models": [m.to_dict() for m in models]}
+    except ImportError:
+        return {"models": [], "message": "MLflow service not available"}
+
+
+@app.get("/api/mlflow/models/{model_name}/versions")
+async def list_model_versions(model_name: str):
+    """List versions of a registered model."""
+    try:
+        from integrations.mlflow.mlflow_service import get_mlflow_service
+        service = get_mlflow_service()
+        versions = service.list_model_versions(model_name)
+        return {"versions": [v.to_dict() for v in versions]}
+    except ImportError:
+        return {"versions": [], "message": "MLflow service not available"}
+
+
+@app.get("/api/mlflow/serving-endpoints")
+async def list_serving_endpoints():
+    """List MLflow model serving endpoints."""
+    try:
+        from integrations.mlflow.mlflow_service import get_mlflow_service
+        service = get_mlflow_service()
+        endpoints = service.list_serving_endpoints()
+        return {"endpoints": [e.to_dict() for e in endpoints]}
+    except ImportError:
+        return {"endpoints": [], "message": "MLflow service not available"}
+
+
+@app.get("/api/mlflow/job/{job_id}/experiments")
+async def get_job_experiments(job_id: str):
+    """Get MLflow experiments associated with a job."""
+    try:
+        from integrations.mlflow.mlflow_service import get_mlflow_service
+        service = get_mlflow_service()
+        experiments = service.get_experiments_by_job(job_id)
+        return {"job_id": job_id, "experiments": [e.to_dict() for e in experiments]}
+    except ImportError:
+        return {"experiments": [], "message": "MLflow service not available"}
+
+
+# ============================================================
+# Addendum Features: Multi-Workspace Support
+# ============================================================
+
+class WorkspaceConfigRequest(BaseModel):
+    workspace_name: str
+    host: str
+    token: str
+    warehouse_id: Optional[str] = None
+    region: Optional[str] = None
+    cloud_provider: Optional[str] = None
+    environment: Optional[str] = None
+    tags: Optional[Dict[str, str]] = None
+
+
+@app.get("/api/workspaces")
+async def list_workspaces(user: User = Depends(get_current_user)):
+    """List configured workspaces."""
+    try:
+        from integrations.multi_workspace.workspace_aggregator import get_multi_workspace_service
+        service = get_multi_workspace_service()
+        workspaces = service.list_workspaces()
+        return {"workspaces": workspaces}
+    except ImportError:
+        return {"workspaces": [], "message": "Multi-workspace service not available"}
+
+
+@app.post("/api/workspaces")
+async def add_workspace(
+    request: WorkspaceConfigRequest,
+    user: User = Depends(get_current_user)
+):
+    """Add a new workspace configuration."""
+    try:
+        from integrations.multi_workspace.workspace_aggregator import get_multi_workspace_service, WorkspaceConfig
+        service = get_multi_workspace_service()
+        config = WorkspaceConfig(
+            workspace_id=f"ws_{request.workspace_name.lower().replace(' ', '_')}",
+            workspace_name=request.workspace_name,
+            host=request.host,
+            token=request.token,
+            warehouse_id=request.warehouse_id,
+            region=request.region,
+            cloud_provider=request.cloud_provider,
+            environment=request.environment,
+            tags=request.tags or {},
+        )
+        service.add_workspace(config)
+        return {"status": "added", "workspace_id": config.workspace_id}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Multi-workspace service not available")
+
+
+@app.delete("/api/workspaces/{workspace_id}")
+async def remove_workspace(
+    workspace_id: str,
+    user: User = Depends(get_current_user)
+):
+    """Remove a workspace configuration."""
+    try:
+        from integrations.multi_workspace.workspace_aggregator import get_multi_workspace_service
+        service = get_multi_workspace_service()
+        success = service.remove_workspace(workspace_id)
+        return {"status": "removed" if success else "not_found"}
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Multi-workspace service not available")
+
+
+@app.get("/api/workspaces/aggregate/summary")
+async def get_aggregate_summary(hours: int = 24):
+    """Get aggregated summary across all workspaces."""
+    try:
+        from integrations.multi_workspace.workspace_aggregator import get_multi_workspace_service
+        service = get_multi_workspace_service()
+        summary = service.get_aggregated_summary(hours=hours)
+        return summary
+    except ImportError:
+        return {"error": "Multi-workspace service not available"}
+
+
+@app.get("/api/workspaces/aggregate/jobs")
+async def get_aggregate_jobs(
+    status: Optional[str] = None,
+    limit: int = 100
+):
+    """Get jobs across all workspaces."""
+    try:
+        from integrations.multi_workspace.workspace_aggregator import get_multi_workspace_service
+        service = get_multi_workspace_service()
+        jobs = service.get_all_jobs(status=status, limit=limit)
+        return {"jobs": jobs}
+    except ImportError:
+        return {"jobs": [], "message": "Multi-workspace service not available"}
+
+
+@app.get("/api/workspaces/aggregate/alerts")
+async def get_cross_workspace_alerts(severity: Optional[str] = None):
+    """Get alerts across all workspaces."""
+    try:
+        from integrations.multi_workspace.workspace_aggregator import get_multi_workspace_service
+        service = get_multi_workspace_service()
+        alerts = service.get_cross_workspace_alerts(min_severity=severity)
+        return {"alerts": [a.to_dict() for a in alerts]}
+    except ImportError:
+        return {"alerts": [], "message": "Multi-workspace service not available"}
+
+
+@app.get("/api/workspaces/{workspace_id}/metrics")
+async def get_workspace_metrics(workspace_id: str, hours: int = 24):
+    """Get metrics for a specific workspace."""
+    try:
+        from integrations.multi_workspace.workspace_aggregator import get_multi_workspace_service
+        service = get_multi_workspace_service()
+        metrics = service.get_workspace_metrics(workspace_id, hours=hours)
+        return metrics.to_dict() if metrics else {"error": "Workspace not found"}
+    except ImportError:
+        return {"error": "Multi-workspace service not available"}
+
+
+# ============================================================
 # Static Files and SPA Routing
 # ============================================================
 

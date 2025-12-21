@@ -652,9 +652,238 @@ Screenshot naming convention:
 - `reports.png`
 - `settings.png`
 
+## Addendum Features (v2.1)
+
+### Push Notifications
+
+Send real-time alerts to iOS, Android, and Web browsers using Firebase Cloud Messaging and Web Push.
+
+#### Firebase Cloud Messaging Setup (iOS/Android)
+
+1. Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
+2. Add your iOS/Android app to the project
+3. Download the service account JSON file
+4. Set environment variables:
+
+```bash
+FIREBASE_CREDENTIALS_PATH=/path/to/firebase-credentials.json
+```
+
+#### Web Push Setup (Browser Notifications)
+
+1. Generate VAPID keys:
+```bash
+npx web-push generate-vapid-keys
+```
+
+2. Set environment variables:
+```bash
+VAPID_PUBLIC_KEY=your_public_key_here
+VAPID_PRIVATE_KEY=your_private_key_here
+VAPID_SUBJECT=mailto:admin@yourcompany.com
+```
+
+#### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/notifications/devices/register` | POST | Register device for push notifications |
+| `/api/notifications/devices` | GET | List user's registered devices |
+| `/api/notifications/devices/{token}` | DELETE | Unregister a device |
+| `/api/notifications/send` | POST | Send notification to user's devices |
+| `/api/notifications/vapid-public-key` | GET | Get VAPID public key for Web Push |
+
+### PDF Export & Scheduled Reports
+
+Generate professional PDF/HTML reports with configurable schedules and email delivery.
+
+#### Email/SMTP Configuration
+
+```bash
+SMTP_HOST=smtp.yourcompany.com
+SMTP_PORT=587
+SMTP_USERNAME=reports@yourcompany.com
+SMTP_PASSWORD=your_smtp_password
+SMTP_USE_TLS=true
+EMAIL_FROM=reports@yourcompany.com
+```
+
+#### Report Types
+- **executive_summary**: High-level overview for stakeholders
+- **failed_jobs**: Detailed analysis of job failures
+- **cost_breakdown**: Cost analysis by job, owner, and time period
+- **sla_compliance**: SLA violation tracking and metrics
+- **trending_issues**: Pattern-based issue detection
+
+#### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/reports/config` | POST | Create scheduled report |
+| `/api/reports/config` | GET | List report configurations |
+| `/api/reports/config/{id}` | DELETE | Delete report config |
+| `/api/reports/generate-now` | POST | Generate report immediately |
+| `/api/reports/history` | GET | Get report generation history |
+| `/api/reports/{id}/download` | GET | Download generated report |
+
+### Anomaly Detection (ML-Powered)
+
+Detect unusual patterns in job duration, cost, and failure rates using statistical (Z-score) and ML (Isolation Forest) methods.
+
+#### Detection Types
+- **Duration Anomalies**: Jobs running significantly longer/shorter than usual
+- **Failure Patterns**: Clusters of failures indicating systemic issues
+- **Cost Anomalies**: Unexpected cost spikes
+
+#### Model Training
+Train per-job ML models for more accurate detection:
+```bash
+POST /api/anomalies/model/train/{job_id}?lookback_days=90
+```
+
+#### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/anomalies/detect/duration/{job_id}` | GET | Detect duration anomalies |
+| `/api/anomalies/detect/failures/{job_id}` | GET | Detect failure patterns |
+| `/api/anomalies/detect/cost/{job_id}` | GET | Detect cost anomalies |
+| `/api/anomalies/model/train/{job_id}` | POST | Train ML model for job |
+| `/api/anomalies/predict/{job_id}` | POST | Predict if metrics are anomalous |
+| `/api/anomalies/alerts` | GET | Get open anomaly alerts |
+| `/api/anomalies/alerts/{id}/acknowledge` | POST | Acknowledge alert |
+| `/api/anomalies/alerts/{id}/resolve` | POST | Resolve alert |
+
+### Custom Dashboards
+
+Build personalized dashboards with drag-and-drop widgets and configurable data sources.
+
+#### Widget Types
+- `metric_card`: Single metric display with trend
+- `line_chart`: Time series visualization
+- `bar_chart`: Categorical comparisons
+- `pie_chart`: Distribution/proportion view
+- `table`: Tabular data display
+- `heatmap`: Activity patterns
+- `gauge`: Progress/threshold indicator
+- `sparkline`: Compact trend line
+
+#### Built-in Data Sources
+| Data Source | Description | Widget Type |
+|-------------|-------------|-------------|
+| `active_jobs_count` | Currently running jobs | metric_card |
+| `success_rate` | 24h success rate | metric_card |
+| `cost_24h` | Last 24h cost | metric_card |
+| `failed_count` | Failed jobs count | metric_card |
+| `run_trend_7d` | 7-day run trend | line_chart |
+| `cost_by_owner` | Cost breakdown by owner | bar_chart |
+| `recent_failures` | Recent failed runs | table |
+| `running_jobs` | Currently running jobs | table |
+| `job_status_distribution` | Status distribution | pie_chart |
+| `hourly_run_heatmap` | Run activity heatmap | heatmap |
+
+#### Dashboard Templates
+- **Executive Overview**: High-level metrics for stakeholders
+- **Operations Dashboard**: Real-time operational monitoring
+- **Cost Analysis**: Detailed cost breakdown and trends
+
+#### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/dashboards` | GET | List user's dashboards |
+| `/api/dashboards` | POST | Create new dashboard |
+| `/api/dashboards/{id}` | GET | Get dashboard by ID |
+| `/api/dashboards/{id}` | PUT | Update dashboard |
+| `/api/dashboards/{id}` | DELETE | Delete dashboard |
+| `/api/dashboards/templates` | GET | Get dashboard templates |
+| `/api/dashboards/widget-data` | POST | Fetch widget data |
+| `/api/dashboards/data-sources` | GET | List available data sources |
+
+### Unity Catalog Lineage
+
+Visualize table-to-table and job-to-table dependencies using Unity Catalog system tables.
+
+#### Features
+- **Upstream Lineage**: Tables that feed into a target table
+- **Downstream Lineage**: Tables that depend on a source table
+- **Job Dependencies**: Jobs that read/write to tables
+- **Impact Analysis**: Downstream impact of table failures
+
+#### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/lineage/table/{catalog}/{schema}/{table}` | GET | Get table lineage |
+| `/api/lineage/job/{job_id}` | GET | Get job's table I/O |
+| `/api/lineage/jobs/dependency-graph` | GET | Get job dependency graph |
+| `/api/lineage/impact/{catalog}/{schema}/{table}` | GET | Analyze failure impact |
+
+### MLflow Integration
+
+Track experiments, models, and serving endpoints from your Databricks workspace.
+
+#### Features
+- **Experiment Tracking**: List experiments with run statistics
+- **Run Metrics**: View metrics, parameters, and artifacts
+- **Model Registry**: Track registered models and versions
+- **Serving Endpoints**: Monitor model serving endpoints
+
+#### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/mlflow/experiments` | GET | List experiments |
+| `/api/mlflow/experiments/{id}` | GET | Get experiment details |
+| `/api/mlflow/experiments/{id}/runs` | GET | List runs in experiment |
+| `/api/mlflow/models` | GET | List registered models |
+| `/api/mlflow/models/{name}/versions` | GET | List model versions |
+| `/api/mlflow/serving-endpoints` | GET | List serving endpoints |
+| `/api/mlflow/job/{job_id}/experiments` | GET | Get job's experiments |
+
+### Multi-Workspace Support
+
+Aggregate metrics and alerts across multiple Databricks workspaces.
+
+#### Adding a Workspace
+```bash
+POST /api/workspaces
+{
+    "workspace_name": "Production US",
+    "host": "https://prod-us.cloud.databricks.com",
+    "token": "dapi...",
+    "warehouse_id": "abc123def456",
+    "region": "us-east-1",
+    "cloud_provider": "aws",
+    "environment": "prod",
+    "tags": {"team": "data-engineering"}
+}
+```
+
+#### Features
+- **Parallel Data Fetching**: Concurrent queries across workspaces
+- **Aggregated Metrics**: Combined view of all workspace metrics
+- **Cross-Workspace Alerts**: Unified alerting across workspaces
+- **Circuit Breaker**: Graceful handling of workspace unavailability
+
+#### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/workspaces` | GET | List configured workspaces |
+| `/api/workspaces` | POST | Add a workspace |
+| `/api/workspaces/{id}` | DELETE | Remove workspace |
+| `/api/workspaces/aggregate/summary` | GET | Aggregated summary |
+| `/api/workspaces/aggregate/jobs` | GET | Jobs across workspaces |
+| `/api/workspaces/aggregate/alerts` | GET | Cross-workspace alerts |
+| `/api/workspaces/{id}/metrics` | GET | Single workspace metrics |
+
 ## Changelog
 
-### v2.0.0 (Latest) - Lakebase-Powered
+### v2.1.0 (Latest) - Addendum Features
+- **Push Notifications**: Firebase Cloud Messaging for iOS/Android, Web Push for browsers
+- **PDF Export**: Professional PDF/HTML reports with ReportLab
+- **Scheduled Reports**: Cron-based scheduling with email delivery
+- **Anomaly Detection**: ML-powered (Isolation Forest) and statistical (Z-score) detection
+- **Custom Dashboards**: Drag-and-drop widget builder with 12 data sources
+- **Unity Catalog Lineage**: Table and job dependency visualization
+- **MLflow Integration**: Experiment, model, and serving endpoint tracking
+- **Multi-Workspace Support**: Aggregate metrics across workspaces
+
+### v2.0.0 - Lakebase-Powered
 - **Lakebase Integration**: 10-40x faster queries with PostgreSQL-compatible layer
 - **Dual-Mode Data Access**: Automatic fallback from Lakebase to SQL Warehouse
 - **Circuit Breaker**: Resilient error handling with automatic recovery

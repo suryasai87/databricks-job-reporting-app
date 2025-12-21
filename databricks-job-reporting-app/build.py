@@ -74,6 +74,41 @@ def main():
         setup_dst = app_dir / "setup"
         shutil.copytree(setup_src, setup_dst)
 
+    # Copy integrations directory (Unity Catalog Lineage, MLflow, Multi-Workspace)
+    integrations_src = backend_dir / "integrations"
+    if integrations_src.exists():
+        print("  Copying integrations directory...")
+        integrations_dst = app_dir / "integrations"
+        shutil.copytree(integrations_src, integrations_dst)
+
+    # Copy features directory (Custom Dashboards)
+    features_src = backend_dir / "features"
+    if features_src.exists():
+        print("  Copying features directory...")
+        features_dst = app_dir / "features"
+        shutil.copytree(features_src, features_dst)
+
+    # Copy notifications directory (Push Notifications)
+    notifications_src = backend_dir / "notifications"
+    if notifications_src.exists():
+        print("  Copying notifications directory...")
+        notifications_dst = app_dir / "notifications"
+        shutil.copytree(notifications_src, notifications_dst)
+
+    # Copy reports directory (PDF Export, Scheduled Reports)
+    reports_src = backend_dir / "reports"
+    if reports_src.exists():
+        print("  Copying reports directory...")
+        reports_dst = app_dir / "reports"
+        shutil.copytree(reports_src, reports_dst)
+
+    # Copy ml directory (Anomaly Detection)
+    ml_src = backend_dir / "ml"
+    if ml_src.exists():
+        print("  Copying ml directory...")
+        ml_dst = app_dir / "ml"
+        shutil.copytree(ml_src, ml_dst)
+
     # Step 3: Copy frontend build to static
     print("\n[4/6] Copying frontend build to static directory...")
     static_dir = app_dir / "static"
@@ -134,9 +169,15 @@ env:
     print(f"  Bundle location: {build_dir}")
     print(f"  App directory: {app_dir}")
     print(f"  app.yaml created: {app_dir / 'app.yaml'}")
-    print("\n  Lakebase data layer: Included")
-    print("  Setup scripts: Included")
-    print("\nNext step: python deploy.py dev --app-name job-monitor-powered-by-lakebase")
+    print("\n  Included Modules:")
+    print("  - Lakebase data layer")
+    print("  - Setup scripts")
+    print("  - Integrations (Lineage, MLflow, Multi-Workspace)")
+    print("  - Features (Custom Dashboards)")
+    print("  - Notifications (Push Notifications)")
+    print("  - Reports (PDF Export, Scheduled Reports)")
+    print("  - ML (Anomaly Detection)")
+    print("\nNext step: python deploy.py dev --app-name job-monitor-lakebase")
     print("=" * 70)
 
 
