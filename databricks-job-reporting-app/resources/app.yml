@@ -1,6 +1,6 @@
 resources:
   apps:
-    databricks-jobs-monitor:
-      name: databricks-jobs-monitor
-      description: "Comprehensive Databricks Jobs Monitoring App with AI Assistant"
+    job-monitor-lakebase:
+      name: job-monitor-lakebase
+      description: "Databricks Jobs Monitor - Powered by Lakebase for 10-40x faster queries"
       source_code_path: ${workspace.file_path}/app

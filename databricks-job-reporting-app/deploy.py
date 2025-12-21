@@ -216,7 +216,7 @@ def main():
     )
     parser.add_argument(
         "--app-name",
-        default="databricks-jobs-monitor",
+        default="job-monitor-lakebase",
         help="Application name"
     )
 

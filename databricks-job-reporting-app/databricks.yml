@@ -1,5 +1,5 @@
 bundle:
-  name: databricks-jobs-monitor
+  name: job-monitor-lakebase
 
 workspace:
   host: https://fe-vm-hls-amer.cloud.databricks.com
