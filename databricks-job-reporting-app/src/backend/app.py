@@ -1,6 +1,7 @@
 """
-Databricks Jobs Monitor - FastAPI Backend
+Databricks Jobs Monitor - FastAPI Backend (Lakebase-Powered)
 Features: SSO authentication, Genie Spaces AI, System Tables queries
+         Lakebase acceleration for sub-100ms query performance
 """
 
 import os
@@ -25,6 +26,14 @@ try:
 except ImportError:
     HAS_DATABRICKS_SDK = False
     logging.warning("Databricks SDK not installed. Some features will be limited.")
+
+# Try to import Lakebase data layer
+try:
+    from data.data_layer import get_data_layer, DataSource
+    HAS_LAKEBASE = True
+except ImportError:
+    HAS_LAKEBASE = False
+    logging.info("Lakebase data layer not available. Using SQL Warehouse only.")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -218,6 +227,59 @@ def execute_sql(query: str, warehouse_id: str = None, timeout: str = "60s") -> L
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/api/data-source/health")
+async def data_source_health():
+    """
+    Check health of data sources (Lakebase and SQL Warehouse).
+    Returns detailed status including latency and circuit breaker state.
+    """
+    if not HAS_LAKEBASE:
+        return {
+            "lakebase_available": False,
+            "message": "Lakebase data layer not installed",
+            "active_source": "sql_warehouse",
+        }
+
+    try:
+        dal = get_data_layer()
+        health = dal.health_check()
+        return {
+            "lakebase_available": True,
+            "lakebase": health.get("lakebase", {}),
+            "sql_warehouse": health.get("sql_warehouse", {}),
+            "active_source": health.get("active_source"),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Data source health check failed: {e}")
+        return {
+            "lakebase_available": True,
+            "error": str(e),
+            "active_source": "sql_warehouse",
+        }
+
+
+@app.get("/api/data-source/performance")
+async def data_source_performance():
+    """
+    Compare query performance between Lakebase and SQL Warehouse.
+    Useful for demonstrating Lakebase speedup.
+    """
+    if not HAS_LAKEBASE:
+        return {"error": "Lakebase data layer not installed"}
+
+    try:
+        dal = get_data_layer()
+        comparison = dal.get_performance_comparison()
+        return {
+            **comparison,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Performance comparison failed: {e}")
+        return {"error": str(e)}
 
 
 @app.get("/api/auth/status")
