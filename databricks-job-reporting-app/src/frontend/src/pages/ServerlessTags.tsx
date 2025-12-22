@@ -28,7 +28,6 @@ import {
 } from '@mui/material';
 import {
   LocalOffer as TagIcon,
-  Business as BusinessIcon,
   AccountTree as PipelineIcon,
   TrendingUp as TrendingIcon,
   Assessment as AssessmentIcon,
@@ -203,11 +202,12 @@ const ServerlessTags: React.FC = () => {
   const departmentData = costByTags
     .filter((item) => item.department)
     .reduce((acc, item) => {
-      const existing = acc.find((a) => a.department === item.department);
+      const dept = item.department!;
+      const existing = acc.find((a) => a.department === dept);
       if (existing) {
         existing.cost_usd += item.cost_usd;
       } else {
-        acc.push({ department: item.department, cost_usd: item.cost_usd });
+        acc.push({ department: dept, cost_usd: item.cost_usd });
       }
       return acc;
     }, [] as { department: string; cost_usd: number }[])
@@ -217,11 +217,12 @@ const ServerlessTags: React.FC = () => {
   const projectData = costByTags
     .filter((item) => item.project_code)
     .reduce((acc, item) => {
-      const existing = acc.find((a) => a.project_code === item.project_code);
+      const proj = item.project_code!;
+      const existing = acc.find((a) => a.project_code === proj);
       if (existing) {
         existing.cost_usd += item.cost_usd;
       } else {
-        acc.push({ project_code: item.project_code, cost_usd: item.cost_usd });
+        acc.push({ project_code: proj, cost_usd: item.cost_usd });
       }
       return acc;
     }, [] as { project_code: string; cost_usd: number }[])

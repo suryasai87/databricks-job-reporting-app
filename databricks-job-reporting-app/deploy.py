@@ -216,7 +216,7 @@ def main():
     )
     parser.add_argument(
         "--app-name",
-        default="job-monitor-lakebase",
+        default="job-monitor-serverless-tags",
         help="Application name"
     )
 

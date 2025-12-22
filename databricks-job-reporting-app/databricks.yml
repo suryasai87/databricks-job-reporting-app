@@ -1,5 +1,5 @@
 bundle:
-  name: job-monitor-lakebase
+  name: job-monitor-serverless-tags
 
 workspace:
   host: https://fe-vm-hls-amer.cloud.databricks.com
@@ -15,11 +15,23 @@ variables:
 
   warehouse_id:
     description: SQL Warehouse ID for system table queries
-    default: ""
+    default: "4b28691c780d9875"
 
   genie_space_id:
     description: Genie Space ID for AI Assistant
-    default: ""
+    default: "01f0dde07de71fd3a4c0b4907fe15554"
+
+  lakebase_instance_id:
+    description: Lakebase database instance ID for accelerated queries
+    default: "6b59171b-cee8-4acc-9209-6c848ffbfbfe"
+
+  serverless_tag_catalog:
+    description: Catalog containing serverless tag correlation tables
+    default: main
+
+  serverless_tag_schema:
+    description: Schema containing serverless tag correlation tables
+    default: serverless_tagging
 
 include:
   - resources/*.yml

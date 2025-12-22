@@ -1,6 +1,40 @@
 resources:
   apps:
-    job-monitor-lakebase:
-      name: job-monitor-lakebase
-      description: "Databricks Jobs Monitor - Powered by Lakebase for 10-40x faster queries"
+    job-monitor-serverless-tags:
+      name: job-monitor-serverless-tags
+      description: "Databricks Jobs Monitor with Serverless Tags - Dynamic cost attribution powered by Lakebase"
       source_code_path: ${workspace.file_path}/app
+
+      config:
+        command:
+          - "uvicorn"
+          - "app:app"
+          - "--host"
+          - "0.0.0.0"
+          - "--port"
+          - "8000"
+
+        env:
+          - name: DATABRICKS_HOST
+            value: "https://fe-vm-hls-amer.cloud.databricks.com"
+          - name: WAREHOUSE_ID
+            value: ${var.warehouse_id}
+          - name: GENIE_SPACE_ID
+            value: ${var.genie_space_id}
+          - name: LAKEBASE_INSTANCE_ID
+            value: ${var.lakebase_instance_id}
+          - name: SERVERLESS_TAG_CATALOG
+            value: ${var.serverless_tag_catalog}
+          - name: SERVERLESS_TAG_SCHEMA
+            value: ${var.serverless_tag_schema}
+
+      resources:
+        - name: lakebase-db
+          description: "Lakebase PostgreSQL instance for accelerated queries"
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+
+      permissions:
+        - user_name: suryasai.turaga@databricks.com
+          level: CAN_MANAGE

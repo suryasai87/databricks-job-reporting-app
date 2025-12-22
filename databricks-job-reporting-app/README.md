@@ -1,14 +1,18 @@
-# Databricks Jobs Monitor (Lakebase-Powered)
+# Databricks Jobs Monitor with Serverless Tags
 
 A comprehensive monitoring application for Databricks jobs with AI-powered insights using Genie Spaces. Inspired by Azure Data Factory's monitoring capabilities, adapted for Databricks environments.
 
-**Now powered by Databricks Lakebase for sub-100ms query performance!**
+**Now with Serverless Tags integration for dynamic cost attribution!**
+
+**Powered by Databricks Lakebase for sub-100ms query performance!**
 
 ![Databricks Jobs Monitor](docs/screenshots/dashboard.png)
 
 ## Live Demo
 
-**App URL:** https://databricks-jobs-monitor-1602460480284688.aws.databricksapps.com
+**App URL (with Serverless Tags):** https://job-monitor-serverless-tags-1602460480284688.aws.databricksapps.com
+
+**Original App URL:** https://databricks-jobs-monitor-1602460480284688.aws.databricksapps.com
 
 ## Features
 
@@ -109,6 +113,32 @@ The Metrics page provides a unified view of performance metrics from multiple so
 - Customizable time range (7-90 days)
 
 ![Cost Analytics](docs/screenshots/cost-analytics.png)
+
+### Serverless Tags (NEW)
+
+Dynamic tag correlation for serverless compute cost attribution, integrated from the [databricks_serverless_compute_dynamic_tagging](https://github.com/suryasai87/databricks_serverless_compute_dynamic_tagging) framework.
+
+#### Cost Attribution Tab
+- **Cost by Department**: Pie chart showing cost distribution across business departments
+- **Cost by Project**: Horizontal bar chart of top projects ranked by cost
+- **Detailed Attribution Table**: Full breakdown with project code, department, business unit, environment, cost center, and correlation quality metrics
+
+#### Cost Trends Tab
+- **Weekly Cost Trends**: Stacked area chart showing tagged vs untagged costs over time
+- **Correlation Rate Tracking**: Line chart monitoring tag correlation improvement
+- **Week-over-Week Variance**: Bar chart highlighting cost changes between weeks (green = decrease, red = increase)
+
+#### Unmatched Runs Tab
+- **Gap Detection**: Identify serverless runs that lack tag correlations
+- **Cost Impact Analysis**: Show estimated cost of unattributed compute
+- **Run Details**: Job ID, notebook path, duration, status, and estimated cost
+
+#### Tag Policies Tab
+- **Policy Definitions**: View required and optional tag configurations
+- **Validation Rules**: Regex patterns and allowed values for each tag
+- **Category Organization**: Tags grouped by cost, organization, infrastructure, application, and ownership
+
+![Serverless Tags](docs/screenshots/serverless-tags.png)
 
 ### Health & Anomalies
 - **Failed Jobs**: Jobs with failure history and success rates

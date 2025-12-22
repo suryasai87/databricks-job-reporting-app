@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build script for Databricks Jobs Monitor (Lakebase-Powered) application."""
+"""Build script for Databricks Jobs Monitor with Serverless Tags application."""
 
 import os
 import sys
@@ -22,7 +22,7 @@ def run_command(command, cwd=None):
 
 def main():
     print("=" * 70)
-    print(" Building Databricks Jobs Monitor (Lakebase-Powered)")
+    print(" Building Databricks Jobs Monitor with Serverless Tags")
     print("=" * 70)
 
     project_root = Path(__file__).parent
@@ -130,10 +130,13 @@ env:
   - name: GENIE_SPACE_ID
     description: "Genie Space ID for AI Assistant"
     value: "01f0dde07de71fd3a4c0b4907fe15554"
-  # Lakebase Configuration (set these after running lakebase_setup.py)
+  # Lakebase Configuration
   - name: LAKEBASE_ENABLED
     description: "Enable Lakebase for faster queries"
-    value: "false"
+    value: "true"
+  - name: LAKEBASE_INSTANCE_ID
+    description: "Lakebase database instance ID"
+    value: "6b59171b-cee8-4acc-9209-6c848ffbfbfe"
   - name: LAKEBASE_HOST
     description: "Lakebase instance DNS (from setup script)"
     value: ""
@@ -141,6 +144,13 @@ env:
     value: "5432"
   - name: LAKEBASE_DATABASE
     value: "jobs_monitor_db"
+  # Serverless Tags Configuration
+  - name: SERVERLESS_TAG_CATALOG
+    description: "Unity Catalog containing serverless tag tables"
+    value: "main"
+  - name: SERVERLESS_TAG_SCHEMA
+    description: "Schema containing serverless tag correlation tables"
+    value: "serverless_tagging"
 """
 
     with open(app_dir / "app.yaml", "w") as f:
@@ -177,7 +187,8 @@ env:
     print("  - Notifications (Push Notifications)")
     print("  - Reports (PDF Export, Scheduled Reports)")
     print("  - ML (Anomaly Detection)")
-    print("\nNext step: python deploy.py dev --app-name job-monitor-lakebase")
+    print("  - Serverless Tags (Dynamic Cost Attribution)")
+    print("\nNext step: python deploy.py dev --app-name job-monitor-serverless-tags")
     print("=" * 70)
 
 
