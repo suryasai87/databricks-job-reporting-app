@@ -254,3 +254,61 @@ export interface MetricsSummaryResponse {
   };
   timestamp: string;
 }
+
+// Serverless Tags Types
+export interface ServerlessTagSummary {
+  total_tagged_runs: number;
+  total_tagged_cost: number;
+  unmatched_runs: number;
+  unmatched_cost: number;
+  correlation_rate: number;
+  unique_projects: number;
+  unique_departments: number;
+  unique_business_units: number;
+}
+
+export interface ServerlessCostByTag {
+  project_code: string | null;
+  department: string | null;
+  business_unit: string | null;
+  environment: string | null;
+  cost_center: string | null;
+  application_name: string | null;
+  owner_email: string | null;
+  cost_usd: number;
+  run_count: number;
+  correlation_quality: number;
+}
+
+export interface ServerlessCostTrend {
+  week: string;
+  tagged_cost: number;
+  untagged_cost: number;
+  total_cost: number;
+  correlation_rate: number;
+  wow_variance: number;
+}
+
+export interface UnmatchedRun {
+  job_id: string;
+  run_id: string;
+  notebook_path: string | null;
+  workspace_id: string;
+  cluster_id: string | null;
+  start_time: string;
+  end_time: string | null;
+  duration_minutes: number | null;
+  run_status: string;
+  estimated_cost: number | null;
+}
+
+export interface TagPolicy {
+  tag_key: string;
+  tag_display_name: string;
+  tag_description: string | null;
+  tag_category: string;
+  is_required: boolean;
+  allowed_values: string[] | null;
+  validation_regex: string | null;
+  is_active: boolean;
+}

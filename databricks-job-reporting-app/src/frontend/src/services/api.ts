@@ -15,6 +15,11 @@ import type {
   CloudMetricsResponse,
   OtelMetricsResponse,
   MetricsSummaryResponse,
+  ServerlessTagSummary,
+  ServerlessCostByTag,
+  ServerlessCostTrend,
+  UnmatchedRun,
+  TagPolicy,
 } from '../types';
 
 const api = axios.create({
@@ -192,6 +197,32 @@ export const getOtelStatus = async (): Promise<OtelMetricsResponse> => {
 // Summary Metrics (Best Available)
 export const getMetricsSummary = async (): Promise<MetricsSummaryResponse> => {
   const response = await api.get('/metrics/summary');
+  return response.data;
+};
+
+// Serverless Tags endpoints
+export const getServerlessTagSummary = async (days: number = 30): Promise<ServerlessTagSummary> => {
+  const response = await api.get('/serverless-tags/summary', { params: { days } });
+  return response.data;
+};
+
+export const getServerlessCostByTags = async (days: number = 30): Promise<ServerlessCostByTag[]> => {
+  const response = await api.get('/serverless-tags/cost-by-tags', { params: { days } });
+  return response.data;
+};
+
+export const getServerlessCostTrends = async (days: number = 30): Promise<ServerlessCostTrend[]> => {
+  const response = await api.get('/serverless-tags/cost-trends', { params: { days } });
+  return response.data;
+};
+
+export const getUnmatchedRuns = async (days: number = 30, limit: number = 100): Promise<UnmatchedRun[]> => {
+  const response = await api.get('/serverless-tags/unmatched-runs', { params: { days, limit } });
+  return response.data;
+};
+
+export const getTagPolicies = async (): Promise<TagPolicy[]> => {
+  const response = await api.get('/serverless-tags/policies');
   return response.data;
 };
 

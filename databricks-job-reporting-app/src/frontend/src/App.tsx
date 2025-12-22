@@ -35,6 +35,7 @@ import {
   BubbleChart as ClusterIcon,
   GridView as GridViewIcon,
   Speed as MetricsIcon,
+  LocalOffer as TagIcon,
 } from '@mui/icons-material';
 import type { User } from './types';
 import { getAuthStatus } from './services/api';
@@ -50,6 +51,7 @@ import GanttView from './pages/GanttView';
 import MatrixView from './pages/MatrixView';
 import Metrics from './pages/Metrics';
 import ClusterAnalysis from './pages/ClusterAnalysis';
+import ServerlessTags from './pages/ServerlessTags';
 import Settings from './pages/Settings';
 
 const drawerWidth = 280;
@@ -62,6 +64,7 @@ const navItems = [
   { path: '/matrix', label: 'Matrix View', icon: <GridViewIcon /> },
   { path: '/metrics', label: 'Metrics', icon: <MetricsIcon /> },
   { path: '/costs', label: 'Cost Analytics', icon: <CostIcon /> },
+  { path: '/serverless-tags', label: 'Serverless Tags', icon: <TagIcon /> },
   { path: '/health', label: 'Health & Anomalies', icon: <HealthIcon /> },
   { path: '/clusters', label: 'Cluster Analysis', icon: <ClusterIcon /> },
   { path: '/ai-assistant', label: 'AI Assistant', icon: <AIIcon /> },
@@ -275,6 +278,7 @@ const App: React.FC = () => {
               <Route path="/matrix" element={<MatrixView />} />
               <Route path="/metrics" element={<Metrics />} />
               <Route path="/costs" element={<CostAnalytics />} />
+              <Route path="/serverless-tags" element={<ServerlessTags />} />
               <Route path="/health" element={<Health />} />
               <Route path="/clusters" element={<ClusterAnalysis />} />
               <Route path="/ai-assistant" element={<AIAssistant />} />
