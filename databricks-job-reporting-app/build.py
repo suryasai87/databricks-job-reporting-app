@@ -147,7 +147,7 @@ env:
   # Serverless Tags Configuration
   - name: SERVERLESS_TAG_CATALOG
     description: "Unity Catalog containing serverless tag tables"
-    value: "main"
+    value: "hls_amer_catalog"
   - name: SERVERLESS_TAG_SCHEMA
     description: "Schema containing serverless tag correlation tables"
     value: "serverless_tagging"

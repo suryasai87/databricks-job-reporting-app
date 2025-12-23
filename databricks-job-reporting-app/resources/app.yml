@@ -24,9 +24,9 @@ resources:
           - name: LAKEBASE_INSTANCE_ID
             value: ${var.lakebase_instance_id}
           - name: SERVERLESS_TAG_CATALOG
-            value: ${var.serverless_tag_catalog}
+            value: "hls_amer_catalog"
           - name: SERVERLESS_TAG_SCHEMA
-            value: ${var.serverless_tag_schema}
+            value: "serverless_tagging"
 
       resources:
         - name: lakebase-db

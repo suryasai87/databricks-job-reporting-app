@@ -27,7 +27,7 @@ variables:
 
   serverless_tag_catalog:
     description: Catalog containing serverless tag correlation tables
-    default: main
+    default: hls_amer_catalog
 
   serverless_tag_schema:
     description: Schema containing serverless tag correlation tables
