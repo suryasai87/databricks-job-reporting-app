@@ -368,7 +368,7 @@ const GanttView: React.FC = () => {
                         </td>
                         <td>
                           <Chip
-                            label={`${overlap.overlap_minutes.toFixed(1)} min`}
+                            label={`${Number(overlap.overlap_minutes || 0).toFixed(1)} min`}
                             size="small"
                             color="warning"
                           />

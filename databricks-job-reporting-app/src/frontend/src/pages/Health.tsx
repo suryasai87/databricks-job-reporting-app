@@ -264,7 +264,7 @@ const Health: React.FC = () => {
                                   color={job.success_rate < 50 ? 'error' : 'warning'}
                                 />
                                 <Typography variant="body2">
-                                  {job.success_rate.toFixed(1)}%
+                                  {Number(job.success_rate || 0).toFixed(1)}%
                                 </Typography>
                               </Box>
                             </TableCell>
@@ -375,11 +375,11 @@ const Health: React.FC = () => {
                                 : 'text.primary'
                             }
                           >
-                            {job.running_minutes.toFixed(0)} min
+                            {Number(job.running_minutes || 0).toFixed(0)} min
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
-                          {job.avg_duration_minutes.toFixed(0)} min
+                          {Number(job.avg_duration_minutes || 0).toFixed(0)} min
                         </TableCell>
                         <TableCell>
                           <Chip
@@ -455,23 +455,23 @@ const Health: React.FC = () => {
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" fontWeight={600}>
-                            {anomaly.metric_value.toFixed(2)}
+                            {Number(anomaly.metric_value || 0).toFixed(2)}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
-                          {anomaly.expected_value.toFixed(2)}
+                          {Number(anomaly.expected_value || 0).toFixed(2)}
                         </TableCell>
                         <TableCell align="right">
                           <Tooltip title="Standard deviations from mean">
                             <Typography
                               variant="body2"
                               color={
-                                Math.abs(anomaly.z_score) > 3
+                                Math.abs(Number(anomaly.z_score || 0)) > 3
                                   ? 'error.main'
                                   : 'warning.main'
                               }
                             >
-                              {anomaly.z_score.toFixed(2)}σ
+                              {Number(anomaly.z_score || 0).toFixed(2)}σ
                             </Typography>
                           </Tooltip>
                         </TableCell>
@@ -553,12 +553,12 @@ const Health: React.FC = () => {
                                   }
                                 />
                                 <Typography variant="body2">
-                                  {stat.retry_success_rate.toFixed(1)}%
+                                  {Number(stat.retry_success_rate || 0).toFixed(1)}%
                                 </Typography>
                               </Box>
                             </TableCell>
                             <TableCell align="right">
-                              {stat.avg_attempts_per_run.toFixed(1)}
+                              {Number(stat.avg_attempts_per_run || 0).toFixed(1)}
                             </TableCell>
                           </TableRow>
                         ))}

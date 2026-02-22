@@ -346,15 +346,15 @@ const CostAnalytics: React.FC = () => {
                             fontWeight={600}
                             color={index < 3 ? 'warning.main' : 'text.primary'}
                           >
-                            ${job.total_cost.toFixed(2)}
+                            ${Number(job.total_cost || 0).toFixed(2)}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">{job.total_runs}</TableCell>
                         <TableCell align="right">
-                          ${(job.total_cost / job.total_runs).toFixed(2)}
+                          ${(Number(job.total_cost || 0) / (job.total_runs || 1)).toFixed(2)}
                         </TableCell>
                         <TableCell align="right">
-                          {job.total_dbus?.toFixed(1) || '-'}
+                          {job.total_dbus ? Number(job.total_dbus).toFixed(1) : '-'}
                         </TableCell>
                       </TableRow>
                     ))}

@@ -368,7 +368,7 @@ const JobsList: React.FC = () => {
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" fontWeight={500}>
-                        {job.cost_usd ? `$${job.cost_usd.toFixed(2)}` : '-'}
+                        {job.cost_usd ? `$${Number(job.cost_usd).toFixed(2)}` : '-'}
                       </Typography>
                     </TableCell>
                   </TableRow>

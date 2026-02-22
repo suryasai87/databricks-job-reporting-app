@@ -461,13 +461,13 @@ const ServerlessTags: React.FC = () => {
                           </TableCell>
                           <TableCell align="right">
                             <Typography variant="body2" fontWeight={600}>
-                              ${item.cost_usd.toFixed(2)}
+                              ${Number(item.cost_usd || 0).toFixed(2)}
                             </Typography>
                           </TableCell>
                           <TableCell align="right">{item.run_count}</TableCell>
                           <TableCell align="right">
                             <Chip
-                              label={`${item.correlation_quality.toFixed(0)}%`}
+                              label={`${Number(item.correlation_quality || 0).toFixed(0)}%`}
                               size="small"
                               color={item.correlation_quality >= 80 ? 'success' : 'warning'}
                             />
@@ -673,11 +673,11 @@ const ServerlessTags: React.FC = () => {
                         {new Date(run.start_time).toLocaleString()}
                       </TableCell>
                       <TableCell align="right">
-                        {run.duration_minutes?.toFixed(1) || '-'}
+                        {run.duration_minutes ? Number(run.duration_minutes).toFixed(1) : '-'}
                       </TableCell>
                       <TableCell align="right">
                         <Typography variant="body2" color="warning.main" fontWeight={600}>
-                          ${run.estimated_cost?.toFixed(2) || '0.00'}
+                          ${run.estimated_cost ? Number(run.estimated_cost).toFixed(2) : '0.00'}
                         </Typography>
                       </TableCell>
                       <TableCell>
