@@ -2,6 +2,8 @@
 
 A comprehensive monitoring application for Databricks jobs with AI-powered insights using Genie Spaces. Inspired by Azure Data Factory's monitoring capabilities, adapted for Databricks environments.
 
+**Multi-cloud compatible: Deploy on AWS, Azure, or GCP Databricks workspaces!**
+
 **Now with Serverless Tags integration for dynamic cost attribution!**
 
 **Powered by Databricks Lakebase for sub-100ms query performance!**
@@ -373,11 +375,45 @@ The deployment script automatically:
 
 ### Environment Variables
 
+#### Core Configuration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABRICKS_HOST` | Databricks workspace URL (e.g., `https://your-workspace.cloud.databricks.com` for AWS or `https://your-workspace.azuredatabricks.net` for Azure) | Yes |
+| `WAREHOUSE_ID` | SQL Warehouse ID for system table queries | Yes |
+| `GENIE_SPACE_ID` | Genie Space ID for AI Assistant | Optional |
+| `CLOUD_PROVIDER` | Cloud provider override: `auto`, `aws`, `azure`, `gcp` (auto-detects from workspace URL if not set) | Optional |
+
+#### Serverless Tags Configuration
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABRICKS_HOST` | Databricks workspace URL | `https://fe-vm-hls-amer.cloud.databricks.com` |
-| `WAREHOUSE_ID` | SQL Warehouse ID for queries | `4b28691c780d9875` |
-| `GENIE_SPACE_ID` | Genie Space ID for AI Assistant | `01f0dde07de71fd3a4c0b4907fe15554` |
+| `SERVERLESS_TAG_CATALOG` | Unity Catalog containing serverless tag tables | `main` |
+| `SERVERLESS_TAG_SCHEMA` | Schema containing serverless tag correlation tables | `default` |
+
+### Multi-Cloud Deployment
+
+The app auto-detects the cloud provider from the workspace URL. You can also set `CLOUD_PROVIDER` explicitly.
+
+#### AWS Databricks
+```bash
+export DATABRICKS_HOST="https://your-workspace.cloud.databricks.com"
+# CLOUD_PROVIDER auto-detects as "aws"
+```
+
+#### Azure Databricks
+```bash
+export DATABRICKS_HOST="https://your-workspace.azuredatabricks.net"
+# CLOUD_PROVIDER auto-detects as "azure"
+```
+
+#### GCP Databricks
+```bash
+export DATABRICKS_HOST="https://your-workspace.gcp.databricks.com"
+# CLOUD_PROVIDER auto-detects as "gcp"
+```
+
+Use the `/api/cloud-info` endpoint to verify the detected cloud provider and configuration status at runtime.
 
 ### Cloud Metrics Configuration (Tier 2)
 
@@ -408,25 +444,22 @@ For older runtimes, download and configure the init script:
 
 ### Configuring the SQL Warehouse
 
-The app uses Databricks SQL Warehouse to query system tables. The default configuration uses:
-- **Warehouse ID**: `4b28691c780d9875` (Serverless Starter Warehouse)
+The app uses a Databricks SQL Warehouse to query system tables. Configure it via environment variable:
 
-To change the warehouse:
-
-1. **In code** - Update `src/backend/app.py`:
-   ```python
-   WAREHOUSE_ID = os.getenv("WAREHOUSE_ID", "your-warehouse-id")
+1. **Via environment variable** (recommended):
+   ```bash
+   export WAREHOUSE_ID="your-warehouse-id"
    ```
 
-2. **In deployment** - Update `build.py` app.yaml section:
+2. **Via `databricks.yml` variables** (for bundle deployments):
    ```yaml
-   env:
-     - name: WAREHOUSE_ID
-       value: "your-warehouse-id"
+   variables:
+     warehouse_id:
+       default: "your-warehouse-id"
    ```
 
-3. **In Databricks Apps UI**:
-   - Go to your app settings
+3. **Via Databricks Apps UI**:
+   - Go to **Compute** > **Apps** > your app > **Settings**
    - Add/update the `WAREHOUSE_ID` environment variable
 
 ## Setting Up AI Assistant (Genie Spaces)
@@ -538,6 +571,7 @@ databricks-job-reporting-app/
 │   │   │   │   ├── ClusterAnalysis.tsx
 │   │   │   │   ├── AIAssistant.tsx
 │   │   │   │   ├── Reports.tsx
+│   │   │   │   ├── ServerlessTags.tsx  # NEW: Dynamic cost attribution
 │   │   │   │   └── Settings.tsx
 │   │   │   ├── components/ # Shared UI components
 │   │   │   │   ├── TaskDAG.tsx       # NEW: DAG visualization
@@ -547,15 +581,22 @@ databricks-job-reporting-app/
 │   │   │   └── theme/      # MUI theme
 │   │   └── package.json
 │   └── backend/            # FastAPI application
-│       ├── app.py          # Main application
+│       ├── app.py          # Main application (multi-cloud aware)
 │       ├── requirements.txt
-│       └── collectors/     # NEW: Metrics collectors
-│           ├── __init__.py
-│           ├── spark_ui_collector.py      # Tier 1: Spark UI
-│           ├── azure_monitor_collector.py # Tier 2: Azure
-│           ├── cloudwatch_collector.py    # Tier 2: AWS
-│           ├── otel_collector.py          # Tier 3: OTEL
-│           └── otel_init_script.py        # OTEL init script
+│       ├── collectors/     # Metrics collectors
+│       │   ├── spark_ui_collector.py      # Tier 1: Spark UI
+│       │   ├── azure_monitor_collector.py # Tier 2: Azure Monitor
+│       │   ├── cloudwatch_collector.py    # Tier 2: AWS CloudWatch
+│       │   ├── otel_collector.py          # Tier 3: OTEL
+│       │   └── otel_init_script.py        # OTEL init script
+│       ├── data/           # Lakebase data access layer
+│       │   └── data_layer.py              # Unified data layer with fallback
+│       ├── setup/          # Lakebase setup scripts
+│       ├── integrations/   # Unity Catalog Lineage, MLflow, Multi-Workspace
+│       ├── features/       # Custom Dashboards
+│       ├── notifications/  # Push Notifications (Firebase/Web Push)
+│       ├── reports/        # PDF Export, Scheduled Reports
+│       └── ml/             # Anomaly Detection (Isolation Forest)
 └── build/                  # Build output (generated)
     └── app/                # Deployment package
 ```
@@ -629,6 +670,16 @@ Check authentication status at `/api/auth/status`.
 - `GET /api/clusters/configs` - Cluster configurations
 - `GET /api/analysis/overlaps` - Job overlaps
 - `GET /api/analysis/concurrent` - Concurrent jobs over time
+
+### Serverless Tags
+- `GET /api/serverless-tags/summary` - Tag attribution summary
+- `GET /api/serverless-tags/cost-by-tags` - Cost breakdown by tags
+- `GET /api/serverless-tags/cost-trends` - Weekly cost trends
+- `GET /api/serverless-tags/unmatched-runs` - Runs without tag correlations
+- `GET /api/serverless-tags/policies` - Tag policy definitions
+
+### Cloud Info
+- `GET /api/cloud-info` - Detected cloud provider and configuration status
 
 ### AI Assistant (Genie)
 - `GET /api/genie/spaces` - List available Genie Spaces
@@ -903,7 +954,15 @@ POST /api/workspaces
 
 ## Changelog
 
-### v2.1.0 (Latest) - Addendum Features
+### v2.2.0 (Latest) - Multi-Cloud & Serverless Tags
+- **Multi-Cloud Support**: Auto-detect AWS, Azure, or GCP from workspace URL; deploy to any Databricks cloud
+- **Cloud Provider API**: `/api/cloud-info` endpoint for runtime cloud detection and configuration status
+- **Serverless Tags Integration**: Dynamic cost attribution correlating serverless compute runs with business tags
+- **Parameterized Configuration**: All workspace-specific values externalized via environment variables and bundle variables
+- **Azure Compatibility**: Full support for Azure Databricks workspaces (`azuredatabricks.net`)
+- **Settings UI**: Cloud Provider card showing detected provider, warehouse, Genie, and Lakebase status
+
+### v2.1.0 - Addendum Features
 - **Push Notifications**: Firebase Cloud Messaging for iOS/Android, Web Push for browsers
 - **PDF Export**: Professional PDF/HTML reports with ReportLab
 - **Scheduled Reports**: Cron-based scheduling with email delivery
