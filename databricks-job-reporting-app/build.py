@@ -116,7 +116,15 @@ def main():
 
     # Step 4: Create app.yaml for Databricks Apps
     print("\n[5/6] Creating app.yaml...")
-    app_yaml_content = """command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Use environment variables with sensible defaults for cloud-agnostic deployment
+    warehouse_id = os.environ.get("WAREHOUSE_ID", "4b28691c780d9875")
+    genie_space_id = os.environ.get("GENIE_SPACE_ID", "01f0dde07de71fd3a4c0b4907fe15554")
+    lakebase_instance_id = os.environ.get("LAKEBASE_INSTANCE_ID", "6b59171b-cee8-4acc-9209-6c848ffbfbfe")
+    tag_catalog = os.environ.get("SERVERLESS_TAG_CATALOG", "hls_amer_catalog")
+    tag_schema = os.environ.get("SERVERLESS_TAG_SCHEMA", "serverless_tagging")
+    cloud_provider = os.environ.get("CLOUD_PROVIDER", "auto")
+
+    app_yaml_content = f"""command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 
 env:
   - name: ENV
@@ -125,18 +133,21 @@ env:
     value: "8000"
   - name: DEBUG
     value: "False"
+  - name: CLOUD_PROVIDER
+    description: "Cloud provider: auto, aws, azure, gcp"
+    value: "{cloud_provider}"
   - name: WAREHOUSE_ID
-    value: "4b28691c780d9875"
+    value: "{warehouse_id}"
   - name: GENIE_SPACE_ID
     description: "Genie Space ID for AI Assistant"
-    value: "01f0dde07de71fd3a4c0b4907fe15554"
+    value: "{genie_space_id}"
   # Lakebase Configuration
   - name: LAKEBASE_ENABLED
     description: "Enable Lakebase for faster queries"
     value: "true"
   - name: LAKEBASE_INSTANCE_ID
     description: "Lakebase database instance ID"
-    value: "6b59171b-cee8-4acc-9209-6c848ffbfbfe"
+    value: "{lakebase_instance_id}"
   - name: LAKEBASE_HOST
     description: "Lakebase instance DNS (from setup script)"
     value: ""
@@ -147,10 +158,10 @@ env:
   # Serverless Tags Configuration
   - name: SERVERLESS_TAG_CATALOG
     description: "Unity Catalog containing serverless tag tables"
-    value: "hls_amer_catalog"
+    value: "{tag_catalog}"
   - name: SERVERLESS_TAG_SCHEMA
     description: "Schema containing serverless tag correlation tables"
-    value: "serverless_tagging"
+    value: "{tag_schema}"
 """
 
     with open(app_dir / "app.yaml", "w") as f:

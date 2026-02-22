@@ -33,6 +33,10 @@ variables:
     description: Schema containing serverless tag correlation tables
     default: serverless_tagging
 
+  cloud_provider:
+    description: "Cloud provider: auto, aws, azure, gcp (auto-detects from workspace URL)"
+    default: auto
+
 include:
   - resources/*.yml
 

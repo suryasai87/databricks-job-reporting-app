@@ -56,9 +56,29 @@ app.add_middleware(
 )
 
 # Environment configuration
-DATABRICKS_HOST = os.getenv("DATABRICKS_HOST", "https://fe-vm-hls-amer.cloud.databricks.com")
-WAREHOUSE_ID = os.getenv("WAREHOUSE_ID", "4b28691c780d9875")
-GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "01f0dde07de71fd3a4c0b4907fe15554")
+DATABRICKS_HOST = os.getenv("DATABRICKS_HOST", "")
+WAREHOUSE_ID = os.getenv("WAREHOUSE_ID", "")
+GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "")
+CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", "auto")  # auto, aws, azure, gcp
+
+
+def detect_cloud_provider() -> str:
+    """Auto-detect cloud provider from workspace URL or environment."""
+    if CLOUD_PROVIDER and CLOUD_PROVIDER != "auto":
+        return CLOUD_PROVIDER
+    host = DATABRICKS_HOST.lower()
+    if "azuredatabricks.net" in host or ".azure." in host:
+        return "azure"
+    elif "gcp.databricks.com" in host:
+        return "gcp"
+    elif "cloud.databricks.com" in host or "aws" in host:
+        return "aws"
+    # Check for Azure env vars
+    if os.getenv("AZURE_TENANT_ID") or os.getenv("ARM_TENANT_ID"):
+        return "azure"
+    if os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"):
+        return "aws"
+    return "unknown"
 
 
 # ============================================================
@@ -188,7 +208,7 @@ def get_workspace_client() -> Optional[Any]:
         return None
 
 
-def execute_sql(query: str, warehouse_id: str = None, timeout: str = "60s") -> List[Dict]:
+def execute_sql(query: str, warehouse_id: str = None, timeout: str = "50s") -> List[Dict]:
     """Execute SQL query against Databricks SQL Warehouse"""
     w = get_workspace_client()
     if not w:
@@ -227,6 +247,27 @@ def execute_sql(query: str, warehouse_id: str = None, timeout: str = "60s") -> L
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/api/cloud-info")
+async def cloud_info():
+    """Return detected cloud provider and configuration status for multi-cloud support."""
+    provider = detect_cloud_provider()
+    return {
+        "cloud_provider": provider,
+        "workspace_host": DATABRICKS_HOST,
+        "warehouse_configured": bool(WAREHOUSE_ID),
+        "genie_configured": bool(GENIE_SPACE_ID),
+        "lakebase_enabled": os.getenv("LAKEBASE_ENABLED", "false").lower() == "true",
+        "azure_monitor_configured": bool(
+            os.getenv("AZURE_TENANT_ID") and os.getenv("AZURE_CLIENT_ID")
+        ),
+        "cloudwatch_configured": bool(
+            os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
+        ),
+        "supported_clouds": ["aws", "azure", "gcp"],
+        "timestamp": datetime.utcnow().isoformat(),
+    }
 
 
 @app.get("/api/data-source/health")
@@ -1477,55 +1518,70 @@ async def get_executor_metrics():
 async def get_cloud_metrics():
     """
     Tier 2: Get Cloud Metrics from Azure Monitor or AWS CloudWatch.
-    Only available if cloud credentials are configured.
+    Auto-detects cloud provider or uses CLOUD_PROVIDER env var.
+    Supports AWS, Azure, and GCP deployments.
     """
-    try:
-        # Try Azure first
-        from collectors.azure_monitor_collector import AzureMonitorCollector
-        azure_collector = AzureMonitorCollector()
+    provider = detect_cloud_provider()
 
-        if azure_collector.is_available():
-            metrics = azure_collector.collect_cluster_metrics("active-cluster")
-            if metrics:
-                return {
-                    "available": True,
-                    "configured": True,
-                    "provider": "azure",
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "metrics": [m.to_dict() for m in metrics] if hasattr(metrics[0], 'to_dict') else metrics,
-                    "summary": azure_collector.get_summary(metrics) if hasattr(azure_collector, 'get_summary') else None,
-                }
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.warning(f"Azure collector error: {e}")
+    # Define collector order based on detected cloud
+    collectors_to_try = []
+    if provider == "azure":
+        collectors_to_try = ["azure", "aws"]
+    elif provider == "aws":
+        collectors_to_try = ["aws", "azure"]
+    else:
+        collectors_to_try = ["azure", "aws"]
 
-    try:
-        # Try AWS CloudWatch
-        from collectors.cloudwatch_collector import CloudWatchCollector
-        aws_collector = CloudWatchCollector()
+    for collector_type in collectors_to_try:
+        if collector_type == "azure":
+            try:
+                from collectors.azure_monitor_collector import AzureMonitorCollector
+                azure_collector = AzureMonitorCollector()
+                if azure_collector.is_available():
+                    metrics = azure_collector.collect_cluster_metrics("active-cluster")
+                    if metrics:
+                        return {
+                            "available": True,
+                            "configured": True,
+                            "provider": "azure",
+                            "detected_cloud": provider,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "metrics": [m.to_dict() for m in metrics] if hasattr(metrics[0], 'to_dict') else metrics,
+                            "summary": azure_collector.get_summary(metrics) if hasattr(azure_collector, 'get_summary') else None,
+                        }
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.warning(f"Azure collector error: {e}")
 
-        if aws_collector.is_available():
-            metrics = aws_collector.collect_cluster_metrics("active-cluster")
-            if metrics:
-                return {
-                    "available": True,
-                    "configured": True,
-                    "provider": "aws",
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "metrics": [m.to_dict() for m in metrics] if hasattr(metrics[0], 'to_dict') else metrics,
-                    "summary": aws_collector.get_summary(metrics) if hasattr(aws_collector, 'get_summary') else None,
-                }
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.warning(f"CloudWatch collector error: {e}")
+        elif collector_type == "aws":
+            try:
+                from collectors.cloudwatch_collector import CloudWatchCollector
+                aws_collector = CloudWatchCollector()
+                if aws_collector.is_available():
+                    metrics = aws_collector.collect_cluster_metrics("active-cluster")
+                    if metrics:
+                        return {
+                            "available": True,
+                            "configured": True,
+                            "provider": "aws",
+                            "detected_cloud": provider,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "metrics": [m.to_dict() for m in metrics] if hasattr(metrics[0], 'to_dict') else metrics,
+                            "summary": aws_collector.get_summary(metrics) if hasattr(aws_collector, 'get_summary') else None,
+                        }
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.warning(f"CloudWatch collector error: {e}")
 
     # No cloud provider configured
     return {
         "available": False,
         "configured": False,
-        "message": "Cloud metrics are not configured. Set environment variables for Azure Monitor or AWS CloudWatch.",
+        "detected_cloud": provider,
+        "message": f"Cloud metrics not configured for {provider}. "
+                   f"Set AZURE_TENANT_ID/AZURE_CLIENT_ID for Azure or AWS_REGION/AWS_ACCESS_KEY_ID for AWS.",
     }
 
 

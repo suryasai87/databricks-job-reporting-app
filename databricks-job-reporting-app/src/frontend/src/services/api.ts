@@ -29,6 +29,12 @@ const api = axios.create({
   },
 });
 
+// Cloud info endpoint
+export const getCloudInfo = async (): Promise<any> => {
+  const response = await api.get('/cloud-info');
+  return response.data;
+};
+
 // Auth endpoints
 export const getAuthStatus = async (): Promise<User> => {
   const response = await api.get('/auth/status');

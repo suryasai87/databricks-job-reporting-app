@@ -20,14 +20,16 @@ import {
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
   Psychology as GenieIcon,
+  Cloud as CloudIcon,
 } from '@mui/icons-material';
-import { getAuthStatus, getGenieSpaces } from '../services/api';
+import { getAuthStatus, getGenieSpaces, getCloudInfo } from '../services/api';
 import type { User } from '../types';
 
 const Settings: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [genieSpaces, setGenieSpaces] = useState<any[]>([]);
+  const [cloudInfo, setCloudInfo] = useState<any>(null);
   const [selectedGenieSpace, setSelectedGenieSpace] = useState('');
   const [settings, setSettings] = useState({
     refreshInterval: 30,
@@ -44,12 +46,14 @@ const Settings: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [userData, spaces] = await Promise.all([
+        const [userData, spaces, cloud] = await Promise.all([
           getAuthStatus(),
           getGenieSpaces(),
+          getCloudInfo(),
         ]);
         setUser(userData);
         setGenieSpaces(spaces);
+        setCloudInfo(cloud);
         if (spaces.length > 0) {
           setSelectedGenieSpace(spaces[0].id);
         }
@@ -173,6 +177,36 @@ const Settings: React.FC = () => {
               <Alert severity="warning">
                 No Genie Spaces found. Please create a Genie Space in Databricks to enable AI features.
               </Alert>
+            )}
+          </Paper>
+        </Grid>
+
+        {/* Cloud Provider */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3, borderRadius: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <CloudIcon color="primary" />
+              <Typography variant="h6">Cloud Provider</Typography>
+            </Box>
+            {cloudInfo ? (
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip
+                  label={`Provider: ${(cloudInfo.cloud_provider || 'unknown').toUpperCase()}`}
+                  color={cloudInfo.cloud_provider === 'azure' ? 'info' : cloudInfo.cloud_provider === 'aws' ? 'warning' : 'default'}
+                  variant="filled"
+                />
+                <Chip label={`Warehouse: ${cloudInfo.warehouse_configured ? 'Configured' : 'Not Set'}`} variant="outlined" color={cloudInfo.warehouse_configured ? 'success' : 'error'} />
+                <Chip label={`Genie: ${cloudInfo.genie_configured ? 'Configured' : 'Not Set'}`} variant="outlined" color={cloudInfo.genie_configured ? 'success' : 'error'} />
+                <Chip label={`Lakebase: ${cloudInfo.lakebase_enabled ? 'Enabled' : 'Disabled'}`} variant="outlined" color={cloudInfo.lakebase_enabled ? 'success' : 'default'} />
+                {cloudInfo.cloud_provider === 'azure' && (
+                  <Chip label={`Azure Monitor: ${cloudInfo.azure_monitor_configured ? 'Configured' : 'Not Set'}`} variant="outlined" />
+                )}
+                {cloudInfo.cloud_provider === 'aws' && (
+                  <Chip label={`CloudWatch: ${cloudInfo.cloudwatch_configured ? 'Configured' : 'Not Set'}`} variant="outlined" />
+                )}
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary">Loading cloud info...</Typography>
             )}
           </Paper>
         </Grid>
